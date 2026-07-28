@@ -8,8 +8,8 @@ import hashlib
 import json
 import math
 import re
-import shutil
 import struct
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,8 +18,54 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def repository_root(path: Path) -> Path:
+    for candidate in (path, *path.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    raise ValueError(f"no git repository contains {path}")
+
+
+def git_output(root: Path, *arguments: str) -> bytes:
+    result = subprocess.run(
+        ["git", "-C", str(root), *arguments],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise ValueError(f"git {' '.join(arguments)} failed in {root}: {detail}")
+    return result.stdout
+
+
+def committed_bytes(path: Path) -> bytes:
+    """Read a source game's committed content.
+
+    Land pins itself to what each source game has committed, never to its
+    working tree. A game mid-art-pass has files on disk that its own history
+    has not accepted yet, and Land must not ship those.
+    """
+    root = repository_root(path)
+    relative = path.resolve().relative_to(root.resolve()).as_posix()
+    return git_output(root, "show", f"HEAD:{relative}")
+
+
+def committed_text(path: Path) -> str:
+    return committed_bytes(path).decode("utf-8")
+
+
+def committed_commit(path: Path) -> str:
+    root = repository_root(path)
+    return git_output(root, "rev-parse", "HEAD").decode("ascii").strip()
+
+
 def load_json(path: Path) -> dict[str, Any]:
+    """Read one of Land's own files from disk."""
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_committed_json(path: Path) -> dict[str, Any]:
+    """Read a source game's file as that game committed it."""
+    return json.loads(committed_text(path))
 
 
 def record(records: list[dict[str, Any]], key: str, value: str) -> dict[str, Any]:
@@ -48,7 +94,7 @@ def source_digest(paths: list[Path]) -> str:
     for path in paths:
         digest.update(path.name.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        digest.update(committed_bytes(path))
     return digest.hexdigest()
 
 
@@ -66,28 +112,17 @@ def c_define_number(path: Path, name: str) -> float:
         r"([0-9]+(?:\.[0-9]+)?)f?\s*$",
         re.MULTILINE,
     )
-    match = pattern.search(path.read_text(encoding="utf-8"))
+    match = pattern.search(committed_text(path))
     if not match:
         raise ValueError(f"missing numeric C define {name} in {path}")
     return float(match.group(1))
-
-
-def c_enum_int(path: Path, name: str) -> int:
-    pattern = re.compile(
-        rf"^\s*{re.escape(name)}\s*=\s*([0-9]+)\s*,?\s*$",
-        re.MULTILINE,
-    )
-    match = pattern.search(path.read_text(encoding="utf-8"))
-    if not match:
-        raise ValueError(f"missing C enumerator {name} in {path}")
-    return int(match.group(1))
 
 
 def c_assignment_int(path: Path, field: str) -> int:
     pattern = re.compile(
         rf"\bgame->{re.escape(field)}\s*=\s*([0-9]+)\s*;"
     )
-    match = pattern.search(path.read_text(encoding="utf-8"))
+    match = pattern.search(committed_text(path))
     if not match:
         raise ValueError(f"missing C assignment {field} in {path}")
     return int(match.group(1))
@@ -100,12 +135,11 @@ def generated_header(games_root: Path) -> str:
     )
     chum_header_path = games_root / "chumrunner/src/game.h"
     chum_path = games_root / "chumrunner/content/campaign.json"
-    fantasy_header_path = games_root / "kilix-fantasy/src/game.h"
     fantasy_path = games_root / "kilix-fantasy/content/campaign.json"
     pleb_path = games_root / "pleb-bound/content/campaign.json"
-    chum = load_json(chum_path)
-    fantasy = load_json(fantasy_path)
-    pleb = load_json(pleb_path)
+    chum = load_committed_json(chum_path)
+    fantasy = load_committed_json(fantasy_path)
+    pleb = load_committed_json(pleb_path)
 
     simulation_hz = int(
         c_define_number(legend_header_path, "LOK_SIMULATION_HZ")
@@ -213,15 +247,6 @@ def generated_header(games_root: Path) -> str:
     fantasy_defense = sum(item["defense"] for item in equipped)
     fantasy_attack = arden["attack"] + sum(item["attack"] for item in equipped)
     fantasy_standard_power = 13
-    fantasy_identities_per_row = c_enum_int(
-        fantasy_header_path, "GAME_ENEMY_IDENTITIES_PER_ATLAS_ROW"
-    )
-    fantasy_enemy_poses = c_enum_int(
-        fantasy_header_path, "GAME_ENEMY_POSE_COUNT"
-    )
-    fantasy_pose_columns = int(
-        c_define_number(fantasy_header_path, "GAME_FIELD_POSE_COLUMN_COUNT")
-    )
 
     pip = record(pleb["members"], "id", "pip")
     bent_bat = record(pleb["items"], "id", "bent_bat")
@@ -360,11 +385,14 @@ def generated_header(games_root: Path) -> str:
             legend_header_path,
             chum_header_path,
             chum_path,
-            fantasy_header_path,
             fantasy_path,
             pleb_path,
         ]
     )
+    legend_commit = committed_commit(legend_game_path)[:12]
+    chum_commit = committed_commit(chum_path)[:12]
+    fantasy_commit = committed_commit(fantasy_path)[:12]
+    pleb_commit = committed_commit(pleb_path)[:12]
 
     def table(name: str, rows: list[str]) -> str:
         return (
@@ -375,10 +403,18 @@ def generated_header(games_root: Path) -> str:
 
     return f"""\
 /* Generated by tools/sync_source_parity.py; do not edit by hand.
+ * Every value below is read from the source games' committed history, never
+ * from their working trees, so an in-flight art or balance pass in another
+ * repository cannot reach Kilix Land until that repository commits it.
  * Source content digest: {digest}
  */
 #ifndef KILIX_LAND_SOURCE_PARITY_H
 #define KILIX_LAND_SOURCE_PARITY_H
+
+#define LAND_PARITY_LEGEND_SOURCE_COMMIT "{legend_commit}"
+#define LAND_PARITY_CHUM_SOURCE_COMMIT "{chum_commit}"
+#define LAND_PARITY_FANTASY_SOURCE_COMMIT "{fantasy_commit}"
+#define LAND_PARITY_PLEB_SOURCE_COMMIT "{pleb_commit}"
 
 #define LAND_PARITY_LEGEND_PLAYER_HP {legend_hp}
 #define LAND_PARITY_LEGEND_MAX_RIFLE_CHARGE {legend_charge}
@@ -422,10 +458,6 @@ def generated_header(games_root: Path) -> str:
 #define LAND_PARITY_FANTASY_STANDARD_POWER {fantasy_standard_power}
 #define LAND_PARITY_FANTASY_ALLY_3 {c_string(initial_roster[3]["name"])}
 #define LAND_PARITY_FANTASY_ENEMY_COUNT {len(fantasy_rows)}
-#define LAND_PARITY_FANTASY_POSE_COLUMNS {fantasy_pose_columns}
-#define LAND_PARITY_FANTASY_ENEMY_IDENTITIES_PER_ROW \
-{fantasy_identities_per_row}
-#define LAND_PARITY_FANTASY_ENEMY_POSE_COUNT {fantasy_enemy_poses}
 
 #define LAND_PARITY_PLEB_PLAYER_HP {pip_hp}
 #define LAND_PARITY_PLEB_PLAYER_DEFENSE {pip_defense}
@@ -557,7 +589,10 @@ def audio_mappings(games_root: Path) -> list[tuple[Path, Path]]:
                 ("battle/attack_swing.wav", "melee-attack.wav"),
                 ("battle/attack_hit.wav", "melee-hit.wav"),
                 ("battle/attack_miss.wav", "miss.wav"),
-                ("battle/enemy_attack.wav", "enemy-attack.wav"),
+                # Kilix Fantasy has an enemy_attack cue on disk that it has
+                # never committed. Until it does, Land takes the committed
+                # swing its own attacks already use.
+                ("battle/attack_swing.wav", "enemy-attack.wav"),
                 ("battle/player_hurt.wav", "player-hurt.wav"),
                 ("battle/enemy_defeat.wav", "enemy-defeat.wav"),
                 ("battle/defeat.wav", "player-defeat.wav"),
@@ -574,7 +609,9 @@ def audio_mappings(games_root: Path) -> list[tuple[Path, Path]]:
                 ("battle/attack_swing.wav", "melee-attack.wav"),
                 ("battle/enemy_hit.wav", "melee-hit.wav"),
                 ("battle/attack_miss.wav", "miss.wav"),
-                ("battle/enemy_attack.wav", "enemy-attack.wav"),
+                # Same as Kilix Fantasy: Pleb Bound's enemy_attack cue is not
+                # in its history yet.
+                ("battle/attack_swing.wav", "enemy-attack.wav"),
                 ("battle/player_hit.wav", "player-hurt.wav"),
                 ("battle/enemy_defeat.wav", "enemy-defeat.wav"),
                 ("battle/party_down.wav", "player-defeat.wav"),
@@ -599,14 +636,15 @@ def synchronize(games_root: Path, write: bool) -> list[str]:
     entries = {item["id"]: item for item in manifest["atlases"]}
     manifest_changed = False
     for asset_id, source, destination in asset_mappings(games_root):
-        if not source.is_file():
-            errors.append(f"missing source asset: {source}")
+        try:
+            source_data = committed_bytes(source)
+        except ValueError as error:
+            errors.append(f"uncommitted source asset: {source} ({error})")
             continue
-        source_data = source.read_bytes()
         if write:
             if not destination.is_file() or destination.read_bytes() != source_data:
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, destination)
+                destination.write_bytes(source_data)
         elif not destination.is_file() or destination.read_bytes() != source_data:
             errors.append(f"stale copied asset: {destination.relative_to(ROOT)}")
         expected_hash = sha256_bytes(source_data)
@@ -652,14 +690,15 @@ def synchronize(games_root: Path, write: bool) -> list[str]:
             else:
                 errors.append(f"manifest grid is stale for {asset_id}")
     for source, destination in audio_mappings(games_root):
-        if not source.is_file():
-            errors.append(f"missing source audio: {source}")
+        try:
+            source_data = committed_bytes(source)
+        except ValueError as error:
+            errors.append(f"uncommitted source audio: {source} ({error})")
             continue
-        source_data = source.read_bytes()
         if write:
             if not destination.is_file() or destination.read_bytes() != source_data:
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, destination)
+                destination.write_bytes(source_data)
         elif not destination.is_file() or destination.read_bytes() != source_data:
             errors.append(f"stale copied audio: {destination.relative_to(ROOT)}")
     if write and manifest_changed:

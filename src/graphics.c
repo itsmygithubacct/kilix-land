@@ -35,17 +35,17 @@ static const graphic_spec GRAPHIC_SPECS[LAND_GRAPHICS_COUNT] = {
     {"legend-portraits", 384u, 288u, 4u, 3u},
     {"chumrunner-characters", 1776u, 888u, 8u, 4u},
     {"chumrunner-portraits", 1776u, 888u, 4u, 2u},
-    {"fantasy-characters", 128u, 1632u, 8u, 68u},
-    {"fantasy-portraits", 1080u, 160u, 27u, 4u},
+    {"fantasy-characters", 1776u, 888u, 8u, 4u},
+    {"fantasy-portraits", 1776u, 888u, 4u, 2u},
     {"pleb-bound-characters", 1776u, 888u, 8u, 4u},
     {"pleb-bound-portraits", 1776u, 888u, 4u, 2u},
     {"legend-training", 512u, 352u, 1u, 1u},
     {"chumrunner-training", 320u, 180u, 1u, 1u},
-    {"fantasy-training", 256u, 152u, 1u, 1u},
+    {"fantasy-training", 320u, 180u, 1u, 1u},
     {"pleb-bound-training", 320u, 180u, 1u, 1u},
     {"legend-enemies", 384u, 256u, 6u, 4u},
     {"chumrunner-enemies", 1776u, 888u, 8u, 4u},
-    {"fantasy-enemies", 1440u, 2800u, 15u, 25u},
+    {"fantasy-enemies", 1152u, 1728u, 3u, 9u},
     {"pleb-bound-enemies", 888u, 1776u, 4u, 8u}
 };
 
@@ -109,14 +109,6 @@ static void copy_cell(uint8_t *destination, const ki_td_rgba8 *source)
             destination + (size_t)y * (size_t)source->width * 4u,
             source->pixels + (size_t)y * source->stride,
             (size_t)source->width * 4u);
-}
-
-static bool build_authored_copy(uint8_t *destination,
-                                const ki_td_rgba8 *source)
-{
-    if (!destination || !ki_td_rgba8_is_valid(source)) return false;
-    copy_cell(destination, source);
-    return true;
 }
 
 static bool build_leg_motion_cell(uint8_t *destination,
@@ -329,84 +321,47 @@ static bool build_legend_opposite_steps(land_graphics *graphics)
     return true;
 }
 
-/*
- * Kilix Fantasy authors every field pose itself: two front strides, a back
- * pose, and a right-facing side pair. Land replays those cells directly and
- * only has to mirror the side pair, so none of the synthetic leg work below
- * applies to that cast.
- */
-static bool cast_authors_full_motion(land_cast cast)
-{
-    return cast == LAND_CAST_FANTASY;
-}
-
-static void character_cell_size(land_cast cast, int *width, int *height)
-{
-    const graphic_spec *spec = &GRAPHIC_SPECS[character_graphic(cast)];
-    *width = (int)(spec->width / spec->columns);
-    *height = (int)(spec->height / spec->rows);
-}
-
 static bool build_hero_motion_cells(land_graphics *graphics)
 {
-    size_t total_bytes = 0u;
-    size_t offset = 0u;
+    const size_t cell_bytes =
+        (size_t)LAND_CHARACTER_CELL * LAND_CHARACTER_CELL * 4u;
+    const size_t total_cells =
+        (size_t)(LAND_CAST_COUNT - 1) *
+        LAND_HERO_MOTION_VARIANT_COUNT;
     int cast_index;
-    for (cast_index = 0; cast_index < LAND_CAST_COUNT - 1; ++cast_index) {
-        int width;
-        int height;
-        character_cell_size((land_cast)(cast_index + 1), &width, &height);
-        if (width <= 0 || height <= 0) return false;
-        total_bytes += (size_t)width * (size_t)height * 4u *
-            LAND_HERO_MOTION_VARIANT_COUNT;
-    }
-    graphics->hero_motion_pixels = malloc(total_bytes);
+    graphics->hero_motion_pixels = malloc(cell_bytes * total_cells);
     if (!graphics->hero_motion_pixels) return false;
     for (cast_index = 0; cast_index < LAND_CAST_COUNT - 1; ++cast_index) {
         land_cast cast = (land_cast)(cast_index + 1);
-        bool authored = cast_authors_full_motion(cast);
         ki_td_rgba8 cells[6];
-        int width;
-        int height;
         int column;
         int variant;
-        character_cell_size(cast, &width, &height);
-        if (!authored &&
-            (width != (int)LAND_CHARACTER_CELL ||
-             height != (int)LAND_CHARACTER_CELL))
-            return false;
         for (column = 0; column < 6; ++column)
             if (!land_graphics_cell(graphics, character_graphic(cast),
-                                    column, 0, &cells[column]) ||
-                cells[column].width != width ||
-                cells[column].height != height)
+                                    column, 0, &cells[column]))
                 return false;
         for (variant = 0;
              variant < LAND_HERO_MOTION_VARIANT_COUNT; ++variant) {
             uint8_t *destination =
-                graphics->hero_motion_pixels + offset;
+                graphics->hero_motion_pixels +
+                ((size_t)cast_index * LAND_HERO_MOTION_VARIANT_COUNT +
+                 (size_t)variant) * cell_bytes;
             bool built;
             if (variant == LAND_HERO_MOTION_DOWN_A)
-                built = authored ?
-                    build_authored_copy(destination, &cells[1]) :
-                    (cast == LAND_CAST_CHUMRUNNER ?
-                        build_leg_motion_cell(
-                            destination, &cells[0], &cells[1], false) :
-                        build_straight_step_cell(
-                            destination, &cells[0], false));
-            else if (variant == LAND_HERO_MOTION_DOWN_B)
-                built = authored ?
-                    build_authored_copy(destination, &cells[2]) :
-                    (cast == LAND_CAST_CHUMRUNNER ?
-                        build_leg_motion_cell(
-                            destination, &cells[0], &cells[2], false) :
-                        build_straight_step_cell(
-                            destination, &cells[0], true));
-            else if (variant == LAND_HERO_MOTION_UP_STEP)
-                built = authored ?
-                    build_authored_copy(destination, &cells[3]) :
+                built = cast == LAND_CAST_CHUMRUNNER ?
                     build_leg_motion_cell(
-                        destination, &cells[3], &cells[3], true);
+                        destination, &cells[0], &cells[1], false) :
+                    build_straight_step_cell(
+                        destination, &cells[0], false);
+            else if (variant == LAND_HERO_MOTION_DOWN_B)
+                built = cast == LAND_CAST_CHUMRUNNER ?
+                    build_leg_motion_cell(
+                        destination, &cells[0], &cells[2], false) :
+                    build_straight_step_cell(
+                        destination, &cells[0], true);
+            else if (variant == LAND_HERO_MOTION_UP_STEP)
+                built = build_leg_motion_cell(
+                    destination, &cells[3], &cells[3], true);
             else
                 built = build_full_mirror(
                     destination,
@@ -414,51 +369,8 @@ static bool build_hero_motion_cells(land_graphics *graphics)
                         variant == LAND_HERO_MOTION_MIRRORED_SIDE ? 4 : 5]);
             if (!built) return false;
             graphics->hero_motion_cells[cast_index][variant] =
-                ki_td_rgba8_make(destination, width, height);
-            offset += (size_t)width * (size_t)height * 4u;
-        }
-    }
-    return true;
-}
-
-/*
- * Kilix Fantasy authors its bestiary facing right and mirrors it in battle.
- * Land's opponent stands to the right of the training range, so it needs the
- * same mirrored presentation; build those cells once at load time.
- */
-static bool build_fantasy_enemy_mirrors(land_graphics *graphics)
-{
-    const graphic_spec *spec = &GRAPHIC_SPECS[LAND_GRAPHIC_FANTASY_ENEMIES];
-    int cell_width = (int)(spec->width / spec->columns);
-    int cell_height = (int)(spec->height / spec->rows);
-    size_t cell_bytes = (size_t)cell_width * (size_t)cell_height * 4u;
-    size_t offset = 0u;
-    int identity;
-    if (cell_width <= 0 || cell_height <= 0) return false;
-    graphics->fantasy_enemy_pixels =
-        malloc(cell_bytes * LAND_PARITY_FANTASY_ENEMY_COUNT *
-               LAND_PARITY_FANTASY_ENEMY_POSE_COUNT);
-    if (!graphics->fantasy_enemy_pixels) return false;
-    for (identity = 0; identity < LAND_PARITY_FANTASY_ENEMY_COUNT;
-         ++identity) {
-        int pose;
-        for (pose = 0; pose < LAND_PARITY_FANTASY_ENEMY_POSE_COUNT; ++pose) {
-            uint8_t *destination =
-                graphics->fantasy_enemy_pixels + offset;
-            ki_td_rgba8 source;
-            if (!land_graphics_cell(
-                    graphics, LAND_GRAPHIC_FANTASY_ENEMIES,
-                    (identity % LAND_PARITY_FANTASY_ENEMY_IDENTITIES_PER_ROW) *
-                        LAND_PARITY_FANTASY_ENEMY_POSE_COUNT + pose,
-                    identity / LAND_PARITY_FANTASY_ENEMY_IDENTITIES_PER_ROW,
-                    &source) ||
-                source.width != cell_width ||
-                source.height != cell_height ||
-                !build_full_mirror(destination, &source))
-                return false;
-            graphics->fantasy_enemy_cells[identity][pose] =
-                ki_td_rgba8_make(destination, cell_width, cell_height);
-            offset += cell_bytes;
+                ki_td_rgba8_make(destination, (int)LAND_CHARACTER_CELL,
+                                 (int)LAND_CHARACTER_CELL);
         }
     }
     return true;
@@ -509,13 +421,9 @@ bool land_graphics_init(land_graphics *graphics, const char *asset_root)
     locator.source_root = root;
     locator.installed_root = root;
     kilix_asset_limits_init(&limits);
-    /*
-     * Kilix Fantasy's bestiary sheet is a 1440x2800 column of 125 visual
-     * identities, so the runtime ceilings have to clear a tall source atlas.
-     */
-    limits.max_file_bytes = 32u * 1024u * 1024u;
-    limits.max_image_bytes = 32u * 1024u * 1024u;
-    limits.max_dimension = 4096u;
+    limits.max_file_bytes = 16u * 1024u * 1024u;
+    limits.max_image_bytes = 16u * 1024u * 1024u;
+    limits.max_dimension = 2048u;
     if (!kilix_asset_cache_init(&graphics->cache,
                                 (size_t)LAND_GRAPHICS_COUNT,
                                 LAND_ASSET_CACHE_LIMIT))
@@ -539,8 +447,7 @@ bool land_graphics_init(land_graphics *graphics, const char *asset_root)
         }
     }
     if (!build_legend_opposite_steps(graphics) ||
-        !build_hero_motion_cells(graphics) ||
-        !build_fantasy_enemy_mirrors(graphics)) {
+        !build_hero_motion_cells(graphics)) {
         land_graphics_shutdown(graphics);
         return false;
     }
@@ -552,7 +459,6 @@ void land_graphics_shutdown(land_graphics *graphics)
     if (!graphics) return;
     free(graphics->legend_opposite_step_pixels);
     free(graphics->hero_motion_pixels);
-    free(graphics->fantasy_enemy_pixels);
     kilix_asset_manifest_clear(&graphics->manifest);
     if (graphics->cache_ready) kilix_asset_cache_clear(&graphics->cache);
     (void)memset(graphics, 0, sizeof *graphics);
@@ -614,19 +520,6 @@ bool land_graphics_legend_opposite_step(
         facing > LAND_FACING_UP)
         return false;
     *image = graphics->legend_opposite_step_cells[facing];
-    return ki_td_rgba8_is_valid(image);
-}
-
-bool land_graphics_fantasy_enemy_cell(
-    const land_graphics *graphics, int identity, int pose,
-    ki_td_rgba8 *image)
-{
-    if (image) *image = (ki_td_rgba8){0};
-    if (!graphics || !image || identity < 0 ||
-        identity >= LAND_PARITY_FANTASY_ENEMY_COUNT || pose < 0 ||
-        pose >= LAND_PARITY_FANTASY_ENEMY_POSE_COUNT)
-        return false;
-    *image = graphics->fantasy_enemy_cells[identity][pose];
     return ki_td_rgba8_is_valid(image);
 }
 

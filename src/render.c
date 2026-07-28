@@ -12,17 +12,9 @@
 #define KILIX_RIFLE_SOURCE_HEIGHT 44
 #define KILIX_RIFLE_RENDER_WIDTH 93
 #define KILIX_RIFLE_RENDER_HEIGHT 64
+#define STANDARD_CHARACTER_CELL 222
+#define ARDEN_ACTION_EXTENSION 44
 #define STANDARD_PLAYER_RENDER_SIZE 92
-/*
- * Kilix Fantasy ships true SNES 16x24 field cells. Land replays them at a
- * whole-number 4x block scale, which keeps every source pixel square and puts
- * Arden at the same on-screen height as the other casts' painted sheets.
- */
-#define FANTASY_CHARACTER_SCALE 4
-#define FANTASY_PLAYER_RENDER_WIDTH (16 * FANTASY_CHARACTER_SCALE)
-#define FANTASY_PLAYER_RENDER_HEIGHT (24 * FANTASY_CHARACTER_SCALE)
-#define FANTASY_ENEMY_RENDER_WIDTH 96
-#define FANTASY_ENEMY_RENDER_HEIGHT 112
 #define PLAYER_DEFEAT_REACTION_TICKS 10
 #define PLAYER_DEFEAT_FALL_TICKS 18
 
@@ -185,32 +177,6 @@ static bool sprite_anchor(const ki_td_rgba8 *image, float *anchor_x,
     return true;
 }
 
-/*
- * Kilix Fantasy's bestiary cells hold creatures of very different sizes in one
- * 96x112 frame, so a fixed shadow reads wrong. Match the source game and size
- * the contact ellipse from the drawn creature itself.
- */
-static float sprite_ground_radius(const ki_td_rgba8 *image, float scale)
-{
-    int left;
-    int right = -1;
-    int y;
-    if (!ki_td_rgba8_is_valid(image)) return 0.0f;
-    left = image->width;
-    for (y = 0; y < image->height; ++y) {
-        const uint8_t *row =
-            image->pixels + (size_t)y * image->stride;
-        int x;
-        for (x = 0; x < image->width; ++x) {
-            if (row[(size_t)x * 4u + 3u] < UINT8_C(8)) continue;
-            if (x < left) left = x;
-            if (x > right) right = x;
-        }
-    }
-    if (right < left) return 0.0f;
-    return (float)(right - left + 1) * scale * 0.34f;
-}
-
 static void draw_foot_anchored(ki_td_soft_renderer *renderer,
                                const ki_td_view *view,
                                const ki_td_rgba8 *image,
@@ -267,13 +233,14 @@ static void draw_ground_centered(ki_td_soft_renderer *renderer,
 }
 
 /*
- * Chumrunner's and Pleb Bound's painted sheets provide a strong impact pose
- * but no horizontal knockout cell. Rotate that authored pose only after its
- * reaction beat, keeping it centered on the same floor contact point.
+ * The imported 8-column cast sheets provide a strong impact pose but no
+ * horizontal knockout cell. Rotate that authored pose only after its reaction
+ * beat, keeping it centered on the same floor contact point.
  */
 static void draw_standard_player_downed(
     ki_td_soft_renderer *renderer, const ki_td_view *view,
-    const ki_td_rgba8 *image, float ground_x, float ground_y)
+    const ki_td_rgba8 *image, float ground_x, float ground_y,
+    int quarter_turns)
 {
     uint8_t pixels[
         STANDARD_PLAYER_RENDER_SIZE * STANDARD_PLAYER_RENDER_SIZE * 4];
@@ -289,11 +256,19 @@ static void draw_standard_player_downed(
             uint8_t *destination =
                 pixels +
                 ((size_t)y * STANDARD_PLAYER_RENDER_SIZE + (size_t)x) * 4u;
-            source_x =
-                y * image->width / STANDARD_PLAYER_RENDER_SIZE;
-            source_y =
-                (STANDARD_PLAYER_RENDER_SIZE - 1 - x) *
-                image->height / STANDARD_PLAYER_RENDER_SIZE;
+            if (quarter_turns == 3) {
+                source_x =
+                    (STANDARD_PLAYER_RENDER_SIZE - 1 - y) *
+                    image->width / STANDARD_PLAYER_RENDER_SIZE;
+                source_y =
+                    x * image->height / STANDARD_PLAYER_RENDER_SIZE;
+            } else {
+                source_x =
+                    y * image->width / STANDARD_PLAYER_RENDER_SIZE;
+                source_y =
+                    (STANDARD_PLAYER_RENDER_SIZE - 1 - x) *
+                    image->height / STANDARD_PLAYER_RENDER_SIZE;
+            }
             source = image->pixels +
                 (size_t)source_y * image->stride +
                 (size_t)source_x * 4u;
@@ -318,19 +293,47 @@ static int player_defeat_elapsed(const land_state *game)
 }
 
 /*
- * The three imported cast sheets do not share one raster. Kilix Fantasy draws
- * its 16x24 SNES cells at a whole-number block scale; Chumrunner and Pleb
- * Bound keep the square box their painted 222px sheets were fitted to.
+ * Arden's authored blade and slash trail continue into the transparent first
+ * 44 pixels of the following atlas cell. Stitch that strip onto the base pose
+ * at the same scale without admitting the neighboring reaction pose.
  */
-static void standard_render_size(land_cast cast, int *width, int *height)
+static void draw_arden_action_extension(
+    ki_td_soft_renderer *renderer, const ki_td_view *view,
+    const land_graphics *graphics, float foot_x, float foot_y,
+    int width, int height)
 {
-    if (cast == LAND_CAST_FANTASY) {
-        *width = FANTASY_PLAYER_RENDER_WIDTH;
-        *height = FANTASY_PLAYER_RENDER_HEIGHT;
+    ki_td_rgba8 base;
+    ki_td_rgba8 atlas;
+    ki_td_rgba8 extension;
+    float anchor_x;
+    float anchor_y;
+    float origin_x;
+    float origin_y;
+    int extension_width;
+    if (!land_graphics_cell(graphics, LAND_GRAPHIC_FANTASY_CHARACTERS,
+                            6, 0, &base) ||
+        !land_graphics_image(graphics, LAND_GRAPHIC_FANTASY_CHARACTERS,
+                             &atlas) ||
+        atlas.width < STANDARD_CHARACTER_CELL * 7 + ARDEN_ACTION_EXTENSION ||
+        atlas.height < STANDARD_CHARACTER_CELL ||
+        !sprite_anchor(&base, &anchor_x, &anchor_y))
         return;
-    }
-    *width = STANDARD_PLAYER_RENDER_SIZE;
-    *height = STANDARD_PLAYER_RENDER_SIZE;
+    extension = ki_td_rgba8_make(
+        atlas.pixels +
+            (size_t)(STANDARD_CHARACTER_CELL * 7) * 4u,
+        ARDEN_ACTION_EXTENSION, STANDARD_CHARACTER_CELL);
+    extension.stride = atlas.stride;
+    if (!ki_td_rgba8_is_valid(&extension)) return;
+    origin_x = foot_x -
+        anchor_x * (float)width / (float)STANDARD_CHARACTER_CELL;
+    origin_y = foot_y -
+        anchor_y * (float)height / (float)STANDARD_CHARACTER_CELL;
+    extension_width =
+        (ARDEN_ACTION_EXTENSION * width +
+         STANDARD_CHARACTER_CELL / 2) / STANDARD_CHARACTER_CELL;
+    ki_td_soft_rgba_resized(renderer, view, origin_x + (float)width,
+                            origin_y, &extension, extension_width,
+                            height, 1.0f);
 }
 
 static int clip_frame(uint64_t tick, const int *durations,
@@ -626,23 +629,24 @@ static void draw_actor(ki_td_soft_renderer *renderer, const ki_td_view *view,
             }
         } else {
             ki_td_rgba8 cell;
-            int render_width;
-            int render_height;
-            standard_render_size(cast, &render_width, &render_height);
             if (standard_player_cell(game, graphics, cast, &cell)) {
-                /*
-                 * Kilix Fantasy authors its own knocked-out cell, so Land
-                 * shows that pose instead of rotating a standing one.
-                 */
                 if (game->player_recovery_ticks > 0 &&
-                    defeat_elapsed >= PLAYER_DEFEAT_FALL_TICKS &&
-                    cast != LAND_CAST_FANTASY)
+                    defeat_elapsed >= PLAYER_DEFEAT_FALL_TICKS) {
                     draw_standard_player_downed(
-                        renderer, view, &cell, sprite_x, sprite_y);
-                else
+                        renderer, view, &cell, sprite_x, sprite_y,
+                        cast == LAND_CAST_FANTASY ? 3 : 1);
+                } else {
                     draw_foot_anchored(
                         renderer, view, &cell, sprite_x, sprite_y,
-                        render_width, render_height, 1.0f);
+                        STANDARD_PLAYER_RENDER_SIZE,
+                        STANDARD_PLAYER_RENDER_SIZE, 1.0f);
+                }
+                if (cast == LAND_CAST_FANTASY &&
+                    game->attack_ticks > 0 &&
+                    game->attack == LAND_ATTACK_ARDEN_BRONZE_BLADE)
+                    draw_arden_action_extension(
+                        renderer, view, graphics,
+                        sprite_x, sprite_y, 92, 92);
             }
         }
     } else {
@@ -659,14 +663,10 @@ static void draw_actor(ki_td_soft_renderer *renderer, const ki_td_view *view,
                     renderer, view, x - 32.0f, y - 60.0f + bob,
                     &cell, 1.0f);
         } else {
-            int render_width;
-            int render_height;
-            standard_render_size(cast, &render_width, &render_height);
             (void)draw_cell(renderer, view, graphics,
                             character_graphic(cast), 0, actor,
-                            x - (float)render_width * 0.5f,
-                            y - (float)render_height + 5.0f + bob,
-                            render_width, render_height, 1.0f);
+                            x - 46.0f, y - 87.0f + bob,
+                            92, 92, 1.0f);
         }
     }
 }
@@ -707,24 +707,6 @@ static void draw_training_enemy(ki_td_soft_renderer *renderer,
         row = visual / 6;
         width = 74;
         height = 74;
-    } else if (cast == LAND_CAST_FANTASY) {
-        /*
-         * Kilix Fantasy addresses its bestiary by visual identity and holds
-         * three poses per identity. Its third pose is the collapsed defeat
-         * cell, so a hit flash keeps the acting pose exactly as the source
-         * battle does. Land draws the pre-mirrored copies at 1:1.
-         */
-        int pose = game->enemy_hp <= 0 ? 2 :
-                   (game->enemy_hit_ticks > 0 ||
-                    game->enemy_action != LAND_ENEMY_ACTION_IDLE ? 1 : 0);
-        if (!land_graphics_fantasy_enemy_cell(graphics, visual, pose, &cell))
-            return;
-        draw_shadow(renderer, view, x, y,
-                    sprite_ground_radius(&cell, 1.0f));
-        draw_foot_anchored(renderer, view, &cell, x, y,
-                           FANTASY_ENEMY_RENDER_WIDTH,
-                           FANTASY_ENEMY_RENDER_HEIGHT, alpha);
-        return;
     } else {
         row = visual;
         if (cast == LAND_CAST_CHUMRUNNER)
@@ -733,18 +715,22 @@ static void draw_training_enemy(ki_td_soft_renderer *renderer,
                       (game->enemy_action == LAND_ENEMY_ACTION_ATTACK ? 4 :
                        (game->enemy_moving ?
                         1 + (int)((game->simulation_tick / 9u) % 2u) : 0)));
+        else if (cast == LAND_CAST_FANTASY)
+            column = game->enemy_hit_ticks > 0 || game->enemy_hp <= 0 ? 2 :
+                     (game->enemy_action != LAND_ENEMY_ACTION_IDLE ? 1 : 0);
         else
             column = game->enemy_hp <= 0 ? 3 :
                      (game->enemy_hit_ticks > 0 ? 2 :
                       (game->enemy_action == LAND_ENEMY_ACTION_ATTACK ? 1 : 0));
-        width = 102;
-        height = 102;
+        width = cast == LAND_CAST_FANTASY ? 136 : 102;
+        height = cast == LAND_CAST_FANTASY ? 68 : 102;
     }
-    if (!land_graphics_cell(graphics, enemy_graphic(cast),
-                            column, row, &cell))
-        return;
-    draw_shadow(renderer, view, x, y, 25.0f);
-    draw_foot_anchored(renderer, view, &cell, x, y, width, height, alpha);
+    draw_shadow(renderer, view, x, y, cast == LAND_CAST_FANTASY ? 34.0f :
+                25.0f);
+    if (land_graphics_cell(graphics, enemy_graphic(cast),
+                           column, row, &cell))
+        draw_foot_anchored(renderer, view, &cell, x, y,
+                           width, height, alpha);
 }
 
 static uint32_t enemy_attack_color(const land_state *game)
@@ -1321,15 +1307,10 @@ static bool portrait_image(const land_state *game,
                            int speaker, int expression,
                            ki_td_rgba8 *portrait)
 {
-    /*
-     * Kilix Fantasy keys both its portrait columns and its field-sprite rows
-     * to the roster's own sprite ids, so Arden, Mira, Sol, and Tamsin line up
-     * with Land's hero/ally order directly.
-     */
     static const int standard_columns[LAND_CAST_COUNT][LAND_ACTOR_COUNT] = {
         {0, 0, 0, 0},
         {0, 1, 2, 3},
-        {0, 1, 2, 3},
+        {0, 2, 1, 3},
         {0, 1, 2, 3}
     };
     land_cast cast = land_visible_cast(game);

@@ -68,29 +68,28 @@ six Chumrunner archetypes, five Kilix Fantasy field enemies, or seven Pleb
 Bound opponents. Boss-only cells remain in the copied atlases but are not
 rolled by the training room.
 
-Kilix Fantasy now ships true SNES rasters, and its sheets are copied without
-any Land-side derivative. Its bestiary is addressed by visual identity rather
-than by row: three poses per identity — idle, acting, and collapsed — and five
-identities per atlas row, exactly as `GAME_ENEMY_IDENTITIES_PER_ATLAS_ROW` and
-`GAME_ENEMY_POSE_COUNT` define in the source game. Those two numbers are part
-of the generated parity contract, so a source relayout fails `make test`
-instead of silently slicing the wrong cell. The authored creatures face right
-and the source battle mirrors them; Land builds the same mirrored copies in
-memory at load time so every opponent faces the player from the right side of
-the training range.
+Kilix Fantasy retains the former transparent enemy derivative as a source
+master and deterministically component-repacks it. Detached attack and defeat
+particles are assigned to their semantic monster before each 384×192 cell is
+bottom-aligned and left-facing, so no adjacent monster fragment can cross a
+runtime slice and every opponent faces the player from the right side of the
+battlefield.
+
+Every copied sheet comes from its source game's committed history, never its
+working tree. Kilix Fantasy is rebuilding its cast around true SNES 16×24
+rasters; that work is not in its history yet, so Land still carries the painted
+sheets its history holds. The rebuilt-raster renderer is kept ready on the
+`fantasy-snes-rasters` branch and lands when that pass is committed.
 
 The full Kilix player atlas preserves Legend of Kilix's direction rows, frame
 indices, timings, and `[32, 60]` foot anchor exactly.
 
-Chumrunner and Pleb Bound each author one front pose plus side idle/walk
-poses, so Kilix Land synthesizes their remaining strides and creates in-memory
-horizontal mirrors at load time. Kilix Fantasy authors all eight field poses
-itself — front idle, front walk A/B, back, side idle/walk, standard attack,
-and knocked out — so Land replays those cells byte-for-byte and only mirrors
-the side pair for the opposite heading. Its roster sprite ids are the atlas
-rows and the portrait columns, which places Arden, Mira, Sol, and Tamsin at
-0-3 in both sheets. The PNGs on disk remain byte-identical to their source
-games.
+Chumrunner, Kilix Fantasy, and Pleb Bound each author front walk A/B plus
+left idle/walk poses. Kilix Land creates three small in-memory horizontal
+mirrors per selected hero at load time: the mirrored left poses supply
+rightward walking, while an alternating original/mirrored back pose makes
+upward foot placement visible. The PNGs on disk remain byte-identical to their
+source games.
 
 The older root-level `room-background.png`, `companions.png`,
 `companion-portraits.png`, `kilix.png`, and `kilix-portraits.png` are retained

@@ -131,29 +131,29 @@
     {
       "id": "fantasy-characters",
       "path": "assets/graphics/casts/fantasy-characters.png",
-      "sha256": "e269b9094b8cbdd598746bea593d1a912efe9da1f4bb798ec5f8ec58149bc2c4",
+      "sha256": "6039cf233c51ffabe0d02caad530e6c35c2060a68aa083b6c6f396e1990e57c1",
       "alpha_required": true,
       "grid": {
         "columns": 8,
-        "rows": 68,
-        "width": 128,
-        "height": 1632,
-        "cell_width": 16,
-        "cell_height": 24
+        "rows": 4,
+        "width": 1776,
+        "height": 888,
+        "cell_width": 222,
+        "cell_height": 222
       }
     },
     {
       "id": "fantasy-portraits",
       "path": "assets/graphics/casts/fantasy-portraits.png",
-      "sha256": "341320c1f21225c59e3e1ca24f9d657fda05c8beea65b64b69040ca13f241211",
+      "sha256": "c28ec591d10c5aef333456bd24b32a4c42da5ad41c55b6280b5365b53769ef5b",
       "alpha_required": true,
       "grid": {
-        "columns": 27,
-        "rows": 4,
-        "width": 1080,
-        "height": 160,
-        "cell_width": 40,
-        "cell_height": 40
+        "columns": 4,
+        "rows": 2,
+        "width": 1776,
+        "height": 888,
+        "cell_width": 444,
+        "cell_height": 444
       }
     },
     {
@@ -215,15 +215,15 @@
     {
       "id": "fantasy-training",
       "path": "assets/graphics/training/fantasy-training.png",
-      "sha256": "ec0572b7df93955450641371c71971946b76347a031c9eaaccf60065351fc71d",
+      "sha256": "8117e2f309d13bb47a097233ae6a92e4ba800cf77a872a74f6a3c3a13fd98c15",
       "alpha_required": false,
       "grid": {
         "columns": 1,
         "rows": 1,
-        "width": 256,
-        "height": 152,
-        "cell_width": 256,
-        "cell_height": 152
+        "width": 320,
+        "height": 180,
+        "cell_width": 320,
+        "cell_height": 180
       }
     },
     {
@@ -271,15 +271,15 @@
     {
       "id": "fantasy-enemies",
       "path": "assets/graphics/casts/fantasy-enemies.png",
-      "sha256": "acfa13b13f6f59a95ae0184c8f1dcc94c036aa281f7b8a613a8c96345e77a4dd",
+      "sha256": "3ce3d23db8794d9985212b0f13072727c0dbaea58befc4651385605da0d58fbe",
       "alpha_required": true,
       "grid": {
-        "columns": 15,
-        "rows": 25,
-        "width": 1440,
-        "height": 2800,
-        "cell_width": 96,
-        "cell_height": 112
+        "columns": 3,
+        "rows": 9,
+        "width": 1152,
+        "height": 1728,
+        "cell_width": 384,
+        "cell_height": 192
       }
     },
     {

@@ -728,21 +728,6 @@ static bool mirror_matches(const ki_td_rgba8 *source,
     return true;
 }
 
-static bool cell_matches(const ki_td_rgba8 *source,
-                         const ki_td_rgba8 *copy)
-{
-    int y;
-    if (!ki_td_rgba8_is_valid(source) || !ki_td_rgba8_is_valid(copy) ||
-        source->width != copy->width || source->height != copy->height)
-        return false;
-    for (y = 0; y < source->height; ++y)
-        if (memcmp(source->pixels + (size_t)y * source->stride,
-                   copy->pixels + (size_t)y * copy->stride,
-                   (size_t)source->width * 4u) != 0)
-            return false;
-    return true;
-}
-
 static bool opposite_step_matches(const ki_td_rgba8 *source,
                                   const ki_td_rgba8 *opposite)
 {
@@ -839,7 +824,7 @@ static int graphics_test(void)
             (cast_index == LAND_CAST_CHUMRUNNER &&
              (image.width != 222 || image.height != 222)) ||
             (cast_index == LAND_CAST_FANTASY &&
-             (image.width != 96 || image.height != 112)) ||
+             (image.width != 384 || image.height != 192)) ||
             (cast_index == LAND_CAST_PLEB_BOUND &&
              (image.width != 222 || image.height != 222))) {
             (void)fprintf(stderr,
@@ -865,23 +850,13 @@ static int graphics_test(void)
         }
     }
     for (cast_index = 0; cast_index < LAND_CAST_COUNT - 1; ++cast_index) {
-        /* Chumrunner and Pleb Bound ship 222px painted sheets; Kilix Fantasy
-         * ships true 16x24 SNES field cells with 40x40 portraits. */
-        static const int character_cell_width[LAND_CAST_COUNT - 1] =
-            {222, 16, 222};
-        static const int character_cell_height[LAND_CAST_COUNT - 1] =
-            {222, 24, 222};
-        static const int portrait_cell_size[LAND_CAST_COUNT - 1] =
-            {444, 40, 444};
         land_cast cast = (land_cast)(cast_index + 1);
         if (!land_graphics_cell(&graphics, character_graphics[cast_index],
                                 7, 3, &image) ||
-            image.width != character_cell_width[cast_index] ||
-            image.height != character_cell_height[cast_index] ||
+            image.width != 222 || image.height != 222 ||
             !land_graphics_cell(&graphics, portrait_graphics[cast_index],
                                 3, 1, &image) ||
-            image.width != portrait_cell_size[cast_index] ||
-            image.height != portrait_cell_size[cast_index] ||
+            image.width != 444 || image.height != 444 ||
             !land_graphics_cell(&graphics, character_graphics[cast_index],
                                 4, 0, &source) ||
             !land_graphics_hero_motion_cell(
@@ -892,33 +867,6 @@ static int graphics_test(void)
                           cast_index + 1);
             land_graphics_shutdown(&graphics);
             return EXIT_FAILURE;
-        }
-    }
-    /*
-     * Kilix Fantasy authors every field pose, so Land must replay its walk and
-     * back cells byte-for-byte rather than synthesizing legs for them.
-     */
-    {
-        static const int authored_columns[3] = {1, 2, 3};
-        static const land_hero_motion_variant authored_variants[3] = {
-            LAND_HERO_MOTION_DOWN_A,
-            LAND_HERO_MOTION_DOWN_B,
-            LAND_HERO_MOTION_UP_STEP
-        };
-        int index;
-        for (index = 0; index < 3; ++index) {
-            if (!land_graphics_cell(&graphics, LAND_GRAPHIC_FANTASY_CHARACTERS,
-                                    authored_columns[index], 0, &source) ||
-                !land_graphics_hero_motion_cell(
-                    &graphics, LAND_CAST_FANTASY,
-                    authored_variants[index], &mirror) ||
-                !cell_matches(&source, &mirror)) {
-                (void)fprintf(stderr,
-                              "FAIL Arden authored motion column=%d\n",
-                              authored_columns[index]);
-                land_graphics_shutdown(&graphics);
-                return EXIT_FAILURE;
-            }
         }
     }
     land_graphics_shutdown(&graphics);

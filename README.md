@@ -79,15 +79,9 @@ rows, and native 64×64 draw size. Because its authored walk cells all hold one
 stride, runtime movement now alternates a planted contact pose, that authored
 step, another contact, and a lower-body-only opposite step.
 
-Rook and Pip use their games' exact 8×4 painted sheets. Pip's down cycle keeps
-every upper-body pixel fixed and alternately lifts his straight idle legs,
-preventing torso drift, angled walking, and sideways turns; Rook's reuses his
-authored stride. Arden's sheet is different in kind: Kilix Fantasy now ships
-true SNES 16×24 field cells with all eight poses authored, so Land replays its
-front walk, back, attack, and knocked-out cells byte-for-byte at a whole-number
-4× block scale — square source pixels, and the same on-screen height as the
-other casts' painted sheets — instead of synthesizing any of them.
-
+The other three heroes use their games' exact 8×4 character sheets. Arden's and
+Pip's down cycles keep every upper-body pixel fixed and alternately lift their
+straight idle legs, preventing torso drift, angled walking, and sideways turns.
 The authored side idle/walk poses remain oriented per source sheet (Rook faces
 left; Arden and Pip face right), with runtime mirrors for the opposite
 direction. Pip's upward steps mirror only the lower-body region, so equipment
@@ -111,8 +105,8 @@ Kilix Land combat formula:
 - Arden can always complete a full Bronze Blade swing. His current 17
   physical attack combines with Attack's power 13 and level bonus, then
   applies enemy defense, the source 95–105% roll, and its 1-in-16 critical.
-  The swing shows Kilix Fantasy's own standard-attack cell, and its opponents
-  use the source bestiary's idle, acting, and collapsed poses.
+  The renderer stitches the authored sword tip and slash trail across its
+  atlas boundary so the entire blade remains visible.
 - Pip can always swing the Bent Bat. In reach, Bash uses the live center,
   bounce, or double timing pattern from the selected Pleb Bound enemy. Bash
   retains Pip's current accuracy and critical chance, the grade bonuses,
@@ -131,13 +125,22 @@ of combat testable in the main games as well as in Kilix Land.
 Kilix Land does not link the four complete game executables at runtime. Its
 real-time room and training adapter lives in `src/game.c`, while the source
 games remain authoritative for their rosters and combat data.
-`tools/sync_source_parity.py` reads Legend of Kilix's live combat constants,
-Kilix Fantasy's atlas-layout constants, and the current Chumrunner, Kilix
-Fantasy, and Pleb Bound campaign files, generates `src/source_parity.h`,
-copies all 17 source-owned character/portrait/training/enemy assets
-byte-for-byte, refreshes their dimensions and manifest hashes, and imports 49
-native UI/combat cues from the four games. Audio remains source-owned and
-byte-identical after the sync.
+`tools/sync_source_parity.py` reads Legend of Kilix's combat constants plus the
+Chumrunner, Kilix Fantasy, and Pleb Bound campaign files, generates
+`src/source_parity.h`, copies all 17 source-owned
+character/portrait/training/enemy assets byte-for-byte, refreshes their
+dimensions and manifest hashes, and imports 49 native UI/combat cues from the
+four games. Audio remains source-owned and byte-identical after the sync.
+
+Every one of those reads goes through each source game's **committed history**,
+never its working tree, and the generated header records the four source
+commits it was built from. A game part-way through an art or balance pass has
+files on disk its own history has not accepted yet; without this rule Land
+silently ships them, which is exactly how Arden's cast once arrived here as
+unfinished 16×24 placeholder art. Two cues follow from the same rule: Kilix
+Fantasy and Pleb Bound both have an `enemy_attack` sound on disk that neither
+has committed, so Land uses each game's committed attack swing for its enemy
+turn until they do.
 
 A source game may also change the shape of its art, not only its numbers.
 Land therefore declares each atlas's own column/row layout, and the check

@@ -223,10 +223,6 @@ typedef struct land_graphics {
     uint8_t *hero_motion_pixels;
     ki_td_rgba8 hero_motion_cells[
         LAND_CAST_COUNT - 1][LAND_HERO_MOTION_VARIANT_COUNT];
-    uint8_t *fantasy_enemy_pixels;
-    ki_td_rgba8 fantasy_enemy_cells[
-        LAND_PARITY_FANTASY_ENEMY_COUNT][
-        LAND_PARITY_FANTASY_ENEMY_POSE_COUNT];
     bool cache_ready;
 } land_graphics;
 
@@ -283,9 +279,6 @@ bool land_graphics_legend_opposite_step(
 bool land_graphics_hero_motion_cell(
     const land_graphics *graphics, land_cast cast,
     land_hero_motion_variant variant, ki_td_rgba8 *image);
-bool land_graphics_fantasy_enemy_cell(
-    const land_graphics *graphics, int identity, int pose,
-    ki_td_rgba8 *image);
 
 bool land_render(ki_td_soft_renderer *renderer, const land_state *game,
                  const land_graphics *graphics);
