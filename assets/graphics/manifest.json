@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "game": "kilix-land",
+  "atlases": [
+    {
+      "id": "legend-room",
+      "path": "assets/graphics/backgrounds/legend-room.png",
+      "sha256": "3f948c443c111c2000339ac96c450abd4a631d33b8cb7e9cc7181528c65ec0bb",
+      "alpha_required": false,
+      "grid": {
+        "columns": 1,
+        "rows": 1,
+        "width": 960,
+        "height": 540,
+        "cell_width": 960,
+        "cell_height": 540
+      }
+    },
+    {
+      "id": "chumrunner-room",
+      "path": "assets/graphics/backgrounds/chumrunner-room.png",
+      "sha256": "34ed027f3c04c2c25ed4645d9c93bc2b83372c2b8a08a2558667275f5f0f37c4",
+      "alpha_required": false,
+      "grid": {
+        "columns": 1,
+        "rows": 1,
+        "width": 960,
+        "height": 540,
+        "cell_width": 960,
+        "cell_height": 540
+      }
+    },
+    {
+      "id": "fantasy-room",
+      "path": "assets/graphics/backgrounds/fantasy-room.png",
+      "sha256": "c5a64afed33a45a6537b39716f248ffa4f455a0fea514dd1e78aa3201f14206c",
+      "alpha_required": false,
+      "grid": {
+        "columns": 1,
+        "rows": 1,
+        "width": 960,
+        "height": 540,
+        "cell_width": 960,
+        "cell_height": 540
+      }
+    },
+    {
+      "id": "pleb-bound-room",
+      "path": "assets/graphics/backgrounds/pleb-bound-room.png",
+      "sha256": "77e6cce1fa8903f9619b2e78d076817fde15169b93090ef5d4b3d7a93e2cd8d2",
+      "alpha_required": false,
+      "grid": {
+        "columns": 1,
+        "rows": 1,
+        "width": 960,
+        "height": 540,
+        "cell_width": 960,
+        "cell_height": 540
+      }
+    },
+    {
+      "id": "legend-player",
+      "path": "assets/graphics/casts/legend-player.png",
+      "sha256": "065f71f24064e34abca7d0827abb8f78a5390f5fc1729cfbe6c4d680ea840515",
+      "alpha_required": true,
+      "grid": {
+        "columns": 16,
+        "rows": 8,
+        "width": 1024,
+        "height": 512,
+        "cell_width": 64,
+        "cell_height": 64
+      }
+    },
+    {
+      "id": "legend-npcs",
+      "path": "assets/graphics/casts/legend-npcs.png",
+      "sha256": "a320ed306b2b3ac367a08af1b1385cde6050b5ad848c7f62872fcd0625571f4a",
+      "alpha_required": true,
+      "grid": {
+        "columns": 4,
+        "rows": 4,
+        "width": 256,
+        "height": 256,
+        "cell_width": 64,
+        "cell_height": 64
+      }
+    },
+    {
+      "id": "legend-portraits",
+      "path": "assets/graphics/casts/legend-portraits.png",
+      "sha256": "d012051efcfb26246b91243bb3676e2871d1dcaaeb7b7a267945fca98a4b0ffb",
+      "alpha_required": true,
+      "grid": {
+        "columns": 4,
+        "rows": 3,
+        "width": 384,
+        "height": 288,
+        "cell_width": 96,
+        "cell_height": 96
+      }
+    },
+    {
+      "id": "chumrunner-characters",
+      "path": "assets/graphics/casts/chumrunner-characters.png",
+      "sha256": "439e1d9acf454cf76ce14f2f426a6c1715691d2081531ae464cb7ff6ddd39cf1",
+      "alpha_required": true,
+      "grid": {
+        "columns": 8,
+        "rows": 4,
+        "width": 1776,
+        "height": 888,
+        "cell_width": 222,
+        "cell_height": 222
+      }
+    },
+    {
+      "id": "chumrunner-portraits",
+      "path": "assets/graphics/casts/chumrunner-portraits.png",
+      "sha256": "3e2791b322279e8521250a9b3e89c2bbe31a293afd1f8a8bbdf8cde3c6cc127b",
+      "alpha_required": true,
+      "grid": {
+        "columns": 4,
+        "rows": 2,
+        "width": 1776,
+        "height": 888,
+        "cell_width": 444,
+        "cell_height": 444
+      }
+    },
+    {
+      "id": "fantasy-characters",
+      "path": "assets/graphics/casts/fantasy-characters.png",
+      "sha256": "e269b9094b8cbdd598746bea593d1a912efe9da1f4bb798ec5f8ec58149bc2c4",
+      "alpha_required": true,
+      "grid": {
+        "columns": 8,
+        "rows": 68,
+        "width": 128,
+        "height": 1632,
+        "cell_width": 16,
+        "cell_height": 24
+      }
+    },
+    {
+      "id": "fantasy-portraits",
+      "path": "assets/graphics/casts/fantasy-portraits.png",
+      "sha256": "341320c1f21225c59e3e1ca24f9d657fda05c8beea65b64b69040ca13f241211",
+      "alpha_required": true,
+      "grid": {
+        "columns": 27,
+        "rows": 4,
+        "width": 1080,
+        "height": 160,
+        "cell_width": 40,
+        "cell_height": 40
+      }
+    },
+    {
+      "id": "pleb-bound-characters",
+      "path": "assets/graphics/casts/pleb-bound-characters.png",
+      "sha256": "9431a60ead3b0bc6806d3e8ef9a018c1f25f59b79bf47c0daf022f1deeee644d",
+      "alpha_required": true,
+      "grid": {
+        "columns": 8,
+        "rows": 4,
+        "width": 1776,
+        "height": 888,
+        "cell_width": 222,
+        "cell_height": 222
+      }
+    },
+    {
+      "id": "pleb-bound-portraits",
+      "path": "assets/graphics/casts/pleb-bound-portraits.png",
+      "sha256": "fa9d7869c77cb70583f0a412003019d4085931b6f38350de1caf81cfdb513cc1",
+      "alpha_required": true,
+      "grid": {
+        "columns": 4,
+        "rows": 2,
+        "width": 1776,
+        "height": 888,
+        "cell_width": 444,
+        "cell_height": 444
+      }
+    },
+    {
+      "id": "legend-training",
+      "path": "assets/graphics/training/legend-training.png",
+      "sha256": "c4994b6e5a2d1b40e5d55b620ba89492593b8ea075777ebaa29df2faa877f043",
+      "alpha_required": false,
+      "grid": {
+        "columns": 1,
+        "rows": 1,
+        "width": 512,
+        "height": 352,
+        "cell_width": 512,
+        "cell_height": 352
+      }
+    },
+    {
+      "id": "chumrunner-training",
+      "path": "assets/graphics/training/chumrunner-training.png",
+      "sha256": "b6031d3a33d8c1d9f9704464c9f4a3824ab073af91e2efe5a4075d53ace8b3e5",
+      "alpha_required": false,
+      "grid": {
+        "columns": 1,
+        "rows": 1,
+        "width": 320,
+        "height": 180,
+        "cell_width": 320,
+        "cell_height": 180
+      }
+    },
+    {
+      "id": "fantasy-training",
+      "path": "assets/graphics/training/fantasy-training.png",
+      "sha256": "ec0572b7df93955450641371c71971946b76347a031c9eaaccf60065351fc71d",
+      "alpha_required": false,
+      "grid": {
+        "columns": 1,
+        "rows": 1,
+        "width": 256,
+        "height": 152,
+        "cell_width": 256,
+        "cell_height": 152
+      }
+    },
+    {
+      "id": "pleb-bound-training",
+      "path": "assets/graphics/training/pleb-bound-training.png",
+      "sha256": "686c3a247d6ef8679870e25bd34bbbe9ae60e6336b725efe5b9346993fa09b38",
+      "alpha_required": false,
+      "grid": {
+        "columns": 1,
+        "rows": 1,
+        "width": 320,
+        "height": 180,
+        "cell_width": 320,
+        "cell_height": 180
+      }
+    },
+    {
+      "id": "legend-enemies",
+      "path": "assets/graphics/casts/legend-enemies.png",
+      "sha256": "aa23508d3676dc7aa195ccfab0085cd33016a00f9caa9f770034ff72e22a351d",
+      "alpha_required": true,
+      "grid": {
+        "columns": 6,
+        "rows": 4,
+        "width": 384,
+        "height": 256,
+        "cell_width": 64,
+        "cell_height": 64
+      }
+    },
+    {
+      "id": "chumrunner-enemies",
+      "path": "assets/graphics/casts/chumrunner-enemies.png",
+      "sha256": "9e1c0b277fc2b3f8a2db4628d5be5068e15502bb0ad032b20a1ed1f7279bd52a",
+      "alpha_required": true,
+      "grid": {
+        "columns": 8,
+        "rows": 4,
+        "width": 1776,
+        "height": 888,
+        "cell_width": 222,
+        "cell_height": 222
+      }
+    },
+    {
+      "id": "fantasy-enemies",
+      "path": "assets/graphics/casts/fantasy-enemies.png",
+      "sha256": "acfa13b13f6f59a95ae0184c8f1dcc94c036aa281f7b8a613a8c96345e77a4dd",
+      "alpha_required": true,
+      "grid": {
+        "columns": 15,
+        "rows": 25,
+        "width": 1440,
+        "height": 2800,
+        "cell_width": 96,
+        "cell_height": 112
+      }
+    },
+    {
+      "id": "pleb-bound-enemies",
+      "path": "assets/graphics/casts/pleb-bound-enemies.png",
+      "sha256": "f0ae76f453eafe72261acab0e6549ee2eb38c4dd82d8e39df71b0cc231312ec5",
+      "alpha_required": true,
+      "grid": {
+        "columns": 4,
+        "rows": 8,
+        "width": 888,
+        "height": 1776,
+        "cell_width": 222,
+        "cell_height": 222
+      }
+    }
+  ],
+  "bitmaps": []
+}
