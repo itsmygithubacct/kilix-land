@@ -1,0 +1,43 @@
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0)
+
+Copyright (c) 2026 itsmygithubacct
+
+Everything in this `assets/` directory — the cast and enemy atlases, room and
+training-range backdrops, portraits, and audio cues — is licensed under
+CC BY-NC-SA 4.0. The source code of Kilix Land is licensed separately under the
+MIT License; see the `LICENSE` file at the repository root.
+
+The authoritative text of this license is published by Creative Commons at:
+
+  https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+  (summary: https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+That text governs. The summary below is for orientation only and is not a
+substitute for it.
+
+You are free to share and adapt this material, provided that:
+
+  Attribution   — you give appropriate credit, link to the license, and
+                  indicate if changes were made.
+  NonCommercial — you do not use the material for commercial purposes.
+  ShareAlike    — if you remix or build upon the material, you distribute your
+                  contributions under this same license.
+
+No warranties are given. The license may not give you all of the permissions
+necessary for your intended use.
+
+## Provenance
+
+None of these assets are third-party works.
+
+The cast atlases, portraits, enemy atlases, room backdrops, and audio are
+copies of material committed by the four source games — Legend of Kilix,
+Chumrunner, Kilix Fantasy, and Pleb Bound — kept byte-identical by
+`tools/sync_source_parity.py`. Those games are separate projects by the same
+author, and several of them are not public. The copies here are offered under
+this license; that grant covers these copies only and does not enlarge any
+rights in the source games themselves.
+
+`assets/graphics/PROMPTS.md` records the prompts behind originally generated
+images, and `assets/graphics/manifest.json` their hashes.
