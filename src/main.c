@@ -746,29 +746,6 @@ static bool mirror_matches(const ki_td_rgba8 *source,
     return true;
 }
 
-static bool opposite_step_matches(const ki_td_rgba8 *source,
-                                  const ki_td_rgba8 *opposite)
-{
-    bool lower_body_changed = false;
-    int y;
-    if (!ki_td_rgba8_is_valid(source) ||
-        !ki_td_rgba8_is_valid(opposite) ||
-        source->width != opposite->width ||
-        source->height != opposite->height)
-        return false;
-    for (y = 0; y < source->height; ++y) {
-        const uint8_t *source_row =
-            source->pixels + (size_t)y * source->stride;
-        const uint8_t *opposite_row =
-            opposite->pixels + (size_t)y * opposite->stride;
-        bool row_changed =
-            memcmp(source_row, opposite_row,
-                   (size_t)source->width * 4u) != 0;
-        if (y < 38 && row_changed) return false;
-        if (y >= 38 && row_changed) lower_body_changed = true;
-    }
-    return lower_body_changed;
-}
 
 static int graphics_test(void)
 {
@@ -849,21 +826,6 @@ static int graphics_test(void)
             (void)fprintf(stderr,
                           "FAIL training graphics cast=%d size=%dx%d\n",
                           cast_index, image.width, image.height);
-            land_graphics_shutdown(&graphics);
-            return EXIT_FAILURE;
-        }
-    }
-    for (cast_index = LAND_FACING_DOWN;
-         cast_index <= LAND_FACING_UP; ++cast_index) {
-        if (!land_graphics_cell(
-                &graphics, LAND_GRAPHIC_LEGEND_PLAYER,
-                4, cast_index * 2, &source) ||
-            !land_graphics_legend_opposite_step(
-                &graphics, (land_facing)cast_index, &mirror) ||
-            !opposite_step_matches(&source, &mirror)) {
-            (void)fprintf(stderr,
-                          "FAIL Kilix opposite step direction=%d\n",
-                          cast_index);
             land_graphics_shutdown(&graphics);
             return EXIT_FAILURE;
         }

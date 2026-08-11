@@ -540,10 +540,15 @@ static bool legend_player_cell(const land_state *game,
             column, (int)game->facing * 2, cell);
     }
     phase = standard_walk_phase(game);
-    if (phase == 3)
-        return land_graphics_legend_opposite_step(
-            graphics, game->facing, cell);
-    column = phase == 1 ? 4 : 0;
+    /*
+     * Kilix's eight authored walk cells are all variations of one held
+     * stride: the sheet has no opposite footfall. Land used to fabricate one
+     * by reflecting the legs around the torso, which put pixels in a pose the
+     * source game never drew. The cycle now alternates the two authored
+     * frames and stays entirely art; a real second footfall has to come from
+     * legend-of-kilix.
+     */
+    column = (phase & 1) ? 4 : 0;
     return land_graphics_cell(
         graphics, LAND_GRAPHIC_LEGEND_PLAYER,
         column, (int)game->facing * 2, cell);

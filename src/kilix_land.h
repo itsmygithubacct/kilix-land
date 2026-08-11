@@ -257,8 +257,6 @@ typedef struct land_graphics {
     kilix_asset_manifest manifest;
     const kilix_asset_image *images[LAND_GRAPHICS_COUNT];
     kilix_asset_atlas atlases[LAND_GRAPHICS_COUNT];
-    uint8_t *legend_opposite_step_pixels;
-    ki_td_rgba8 legend_opposite_step_cells[4];
     uint8_t *hero_motion_pixels;
     ki_td_rgba8 hero_motion_cells[
         LAND_CAST_COUNT - 1][LAND_HERO_MOTION_VARIANT_COUNT];
@@ -313,8 +311,6 @@ bool land_graphics_image(const land_graphics *graphics, land_graphic graphic,
                          ki_td_rgba8 *image);
 bool land_graphics_cell(const land_graphics *graphics, land_graphic graphic,
                         int column, int row, ki_td_rgba8 *image);
-bool land_graphics_legend_opposite_step(
-    const land_graphics *graphics, land_facing facing, ki_td_rgba8 *image);
 bool land_graphics_hero_motion_cell(
     const land_graphics *graphics, land_cast cast,
     land_hero_motion_variant variant, ki_td_rgba8 *image);
