@@ -708,6 +708,27 @@ def synchronize(games_root: Path, write: bool) -> list[str]:
     return errors
 
 
+SOURCE_GAMES = ("legend-of-kilix", "chumrunner", "kilix-fantasy",
+                "pleb-bound")
+
+
+def missing_sources(games_root: Path) -> list[str]:
+    """Which of the four source games are not checked out beside us.
+
+    Kilix Land is public; the four games it is assembled from are not. The
+    parity check reads their committed history with `git show`, so it can only
+    run on a machine that actually has them -- on any other clone it is not
+    failing, it has nothing to compare against.
+
+    A game counts as present only if it is a git repository, because the check
+    reads HEAD rather than the working tree. A plain directory of files would
+    get past an exists() test and then fail deep inside git with a confusing
+    message, which is how this surfaced in the first place.
+    """
+    return [name for name in SOURCE_GAMES
+            if not (games_root / name / ".git").exists()]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -723,6 +744,19 @@ def main() -> int:
     )
     args = parser.parse_args()
     games_root = args.games_root.resolve()
+    absent = missing_sources(games_root)
+    if absent and not args.write:
+        # Skip, not pass: say plainly what was not checked. --write is
+        # deliberately excluded -- a sync that quietly copied nothing because
+        # its sources were missing would look like a clean run and leave the
+        # tree stale.
+        print(f"SKIP source parity: {', '.join(absent)} not present under "
+              f"{games_root}; nothing to verify against")
+        return 0
+    if absent:
+        print(f"source parity error: cannot sync, {', '.join(absent)} not "
+              f"present under {games_root}", file=sys.stderr)
+        return 1
     try:
         errors = synchronize(games_root, args.write)
     except (OSError, ValueError, KeyError, TypeError) as error:
