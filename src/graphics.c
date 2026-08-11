@@ -7,7 +7,6 @@
 #define LAND_ASSET_MANIFEST "assets/graphics/manifest.json"
 #define LAND_ASSET_MANIFEST_LIMIT (2u * 1024u * 1024u)
 #define LAND_ASSET_CACHE_LIMIT (128u * 1024u * 1024u)
-#define LAND_CHARACTER_CELL 222u
 
 typedef struct sprite_metrics {
     int left;
@@ -35,17 +34,20 @@ static const graphic_spec GRAPHIC_SPECS[LAND_GRAPHICS_COUNT] = {
     {"legend-portraits", 384u, 288u, 4u, 3u},
     {"chumrunner-characters", 1776u, 888u, 8u, 4u},
     {"chumrunner-portraits", 1776u, 888u, 4u, 2u},
-    {"fantasy-characters", 1776u, 888u, 8u, 4u},
-    {"fantasy-portraits", 1776u, 888u, 4u, 2u},
+    {"fantasy-characters", 384u, 1632u, 24u, 68u},
+    {"fantasy-portraits", 1080u, 160u, 27u, 4u},
     {"pleb-bound-characters", 1776u, 888u, 8u, 4u},
     {"pleb-bound-portraits", 1776u, 888u, 4u, 2u},
     {"legend-training", 512u, 352u, 1u, 1u},
     {"chumrunner-training", 320u, 180u, 1u, 1u},
-    {"fantasy-training", 320u, 180u, 1u, 1u},
+    {"fantasy-training", 256u, 152u, 1u, 1u},
     {"pleb-bound-training", 320u, 180u, 1u, 1u},
     {"legend-enemies", 384u, 256u, 6u, 4u},
     {"chumrunner-enemies", 1776u, 888u, 8u, 4u},
-    {"fantasy-enemies", 1152u, 1728u, 3u, 9u},
+    /* 15 columns are five banks of three poses (idle, action,
+     * hurt-or-defeated) and 25 rows are enemy types; Land uses bank 1,
+     * so columns 0..2 keep the meaning they always had. */
+    {"fantasy-enemies", 1440u, 2800u, 15u, 25u},
     {"pleb-bound-enemies", 888u, 1776u, 4u, 8u}
 };
 
@@ -135,20 +137,19 @@ static bool build_leg_motion_cell(uint8_t *destination,
     left = (int)(base_metrics.spine_x + 0.5) - half_width;
     right = (int)(base_metrics.spine_x + 0.5) + half_width;
     if (left < 0) left = 0;
-    if (right >= (int)LAND_CHARACTER_CELL)
-        right = (int)LAND_CHARACTER_CELL - 1;
+    if (right >= base->width) right = base->width - 1;
     split = base_metrics.bottom -
         (base_metrics.bottom - base_metrics.top + 1) * 34 / 100;
     step_split = step_metrics.bottom -
         (step_metrics.bottom - step_metrics.top + 1) * 34 / 100;
     offset_y = base_metrics.bottom - step_metrics.bottom;
-    for (y = split; y < (int)LAND_CHARACTER_CELL; ++y) {
+    for (y = split; y < base->height; ++y) {
         int source_y = y - offset_y;
         int x;
         for (x = left; x <= right; ++x) {
             uint8_t *output =
                 destination +
-                ((size_t)y * LAND_CHARACTER_CELL + (size_t)x) * 4u;
+                ((size_t)y * (size_t)base->width + (size_t)x) * 4u;
             double aligned_x =
                 (double)x - base_metrics.spine_x + step_metrics.spine_x;
             int source_x;
@@ -197,18 +198,17 @@ static bool build_straight_step_cell(uint8_t *destination,
     left = center - half_width;
     right = center + half_width;
     if (left < 0) left = 0;
-    if (right >= (int)LAND_CHARACTER_CELL)
-        right = (int)LAND_CHARACTER_CELL - 1;
+    if (right >= base->width) right = base->width - 1;
     leg_height = (metrics.bottom - metrics.top + 1) * 27 / 100;
     split = metrics.bottom - leg_height;
     lift = (metrics.bottom - metrics.top + 24) / 24;
     if (lift < 5) lift = 5;
-    for (y = split; y < (int)LAND_CHARACTER_CELL; ++y) {
+    for (y = split; y < base->height; ++y) {
         int x;
         for (x = left; x <= right; ++x)
             (void)memset(
                 destination +
-                    ((size_t)y * LAND_CHARACTER_CELL + (size_t)x) * 4u,
+                    ((size_t)y * (size_t)base->width + (size_t)x) * 4u,
                 0, 4u);
     }
     for (y = split; y <= metrics.bottom; ++y) {
@@ -218,12 +218,10 @@ static bool build_straight_step_cell(uint8_t *destination,
             int shift = pixel_is_left == lift_left && leg_height > 0 ?
                 lift * (y - split) / leg_height : 0;
             int target_y = y - shift;
-            if (target_y < 0 ||
-                target_y >= (int)LAND_CHARACTER_CELL)
-                continue;
+            if (target_y < 0 || target_y >= base->height) continue;
             (void)memcpy(
                 destination +
-                    ((size_t)target_y * LAND_CHARACTER_CELL +
+                    ((size_t)target_y * (size_t)base->width +
                      (size_t)x) * 4u,
                 base->pixels + (size_t)y * base->stride +
                     (size_t)x * 4u,
@@ -323,31 +321,60 @@ static bool build_legend_opposite_steps(land_graphics *graphics)
 
 static bool build_hero_motion_cells(land_graphics *graphics)
 {
-    const size_t cell_bytes =
-        (size_t)LAND_CHARACTER_CELL * LAND_CHARACTER_CELL * 4u;
-    const size_t total_cells =
-        (size_t)(LAND_CAST_COUNT - 1) *
-        LAND_HERO_MOTION_VARIANT_COUNT;
+    /*
+     * Every cast's motion cells are the size of that cast's own atlas cell.
+     * Fantasy is 16x24 pixel art where the others are 222x222, so a single
+     * fixed stride would overrun the small cells and waste most of the large
+     * ones. The buffer is one allocation with a per-cast offset.
+     *
+     * Fantasy also authors all four directions, so its five variants are
+     * copied straight from the sheet: the "mirrored" pair is the real
+     * walk-left art rather than a reflection of walk-right, which is what the
+     * other casts need only because they ship one side.
+     */
+    static const int FANTASY_SOURCE[LAND_HERO_MOTION_VARIANT_COUNT] = {
+        4, 5, 13, 7, 8};
+    size_t offsets[LAND_CAST_COUNT - 1];
+    size_t total_bytes = 0u;
     int cast_index;
-    graphics->hero_motion_pixels = malloc(cell_bytes * total_cells);
+    for (cast_index = 0; cast_index < LAND_CAST_COUNT - 1; ++cast_index) {
+        land_cast cast = (land_cast)(cast_index + 1);
+        ki_td_rgba8 probe;
+        if (!land_graphics_cell(graphics, character_graphic(cast), 0, 0,
+                                &probe))
+            return false;
+        offsets[cast_index] = total_bytes;
+        total_bytes += (size_t)probe.width * (size_t)probe.height * 4u *
+                       (size_t)LAND_HERO_MOTION_VARIANT_COUNT;
+    }
+    graphics->hero_motion_pixels = malloc(total_bytes);
     if (!graphics->hero_motion_pixels) return false;
     for (cast_index = 0; cast_index < LAND_CAST_COUNT - 1; ++cast_index) {
         land_cast cast = (land_cast)(cast_index + 1);
         ki_td_rgba8 cells[6];
+        size_t cell_bytes;
         int column;
         int variant;
         for (column = 0; column < 6; ++column)
             if (!land_graphics_cell(graphics, character_graphic(cast),
                                     column, 0, &cells[column]))
                 return false;
+        cell_bytes = (size_t)cells[0].width * (size_t)cells[0].height * 4u;
         for (variant = 0;
              variant < LAND_HERO_MOTION_VARIANT_COUNT; ++variant) {
             uint8_t *destination =
-                graphics->hero_motion_pixels +
-                ((size_t)cast_index * LAND_HERO_MOTION_VARIANT_COUNT +
-                 (size_t)variant) * cell_bytes;
+                graphics->hero_motion_pixels + offsets[cast_index] +
+                (size_t)variant * cell_bytes;
             bool built;
-            if (variant == LAND_HERO_MOTION_DOWN_A)
+            if (cast == LAND_CAST_FANTASY) {
+                ki_td_rgba8 authored;
+                built = land_graphics_cell(graphics,
+                                           character_graphic(cast),
+                                           FANTASY_SOURCE[variant], 0,
+                                           &authored);
+                if (built) copy_cell(destination, &authored);
+            }
+            else if (variant == LAND_HERO_MOTION_DOWN_A)
                 built = cast == LAND_CAST_CHUMRUNNER ?
                     build_leg_motion_cell(
                         destination, &cells[0], &cells[1], false) :
@@ -369,8 +396,8 @@ static bool build_hero_motion_cells(land_graphics *graphics)
                         variant == LAND_HERO_MOTION_MIRRORED_SIDE ? 4 : 5]);
             if (!built) return false;
             graphics->hero_motion_cells[cast_index][variant] =
-                ki_td_rgba8_make(destination, (int)LAND_CHARACTER_CELL,
-                                 (int)LAND_CHARACTER_CELL);
+                ki_td_rgba8_make(destination, cells[0].width,
+                                 cells[0].height);
         }
     }
     return true;
@@ -423,7 +450,13 @@ bool land_graphics_init(land_graphics *graphics, const char *asset_root)
     kilix_asset_limits_init(&limits);
     limits.max_file_bytes = 16u * 1024u * 1024u;
     limits.max_image_bytes = 16u * 1024u * 1024u;
-    limits.max_dimension = 2048u;
+    /* The fantasy cast's enemy atlas is 1440x2800: 25 enemy types down,
+     * five banks of three poses across. 2048 rejected it, and because a
+     * single failed atlas tears down the whole set, that surfaced as
+     * "loaded=0/21" rather than as one missing sheet. Soft raster keeps
+     * these in ordinary memory, so the ceiling is about bounding a bad
+     * file, not a GPU texture limit. */
+    limits.max_dimension = 4096u;
     if (!kilix_asset_cache_init(&graphics->cache,
                                 (size_t)LAND_GRAPHICS_COUNT,
                                 LAND_ASSET_CACHE_LIMIT))

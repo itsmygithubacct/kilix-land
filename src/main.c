@@ -706,6 +706,24 @@ static int selftest(void)
     return EXIT_SUCCESS;
 }
 
+/*
+ * Fantasy ships authored art for both sides, so its "mirrored" motion cells
+ * are copies rather than reflections and have to be compared as such.
+ */
+static bool cells_match(const ki_td_rgba8 *a, const ki_td_rgba8 *b)
+{
+    int y;
+    if (!ki_td_rgba8_is_valid(a) || !ki_td_rgba8_is_valid(b) ||
+        a->width != b->width || a->height != b->height)
+        return false;
+    for (y = 0; y < a->height; ++y)
+        if (memcmp(a->pixels + (size_t)y * a->stride,
+                   b->pixels + (size_t)y * b->stride,
+                   (size_t)a->width * 4u) != 0)
+            return false;
+    return true;
+}
+
 static bool mirror_matches(const ki_td_rgba8 *source,
                            const ki_td_rgba8 *mirror)
 {
@@ -785,6 +803,7 @@ static int graphics_test(void)
     land_graphics graphics;
     ki_td_rgba8 image;
     ki_td_rgba8 source;
+    ki_td_rgba8 authored;
     ki_td_rgba8 mirror;
     bool result = land_graphics_init(&graphics, asset_root());
     size_t loaded = land_graphics_loaded_count(&graphics);
@@ -824,7 +843,7 @@ static int graphics_test(void)
             (cast_index == LAND_CAST_CHUMRUNNER &&
              (image.width != 222 || image.height != 222)) ||
             (cast_index == LAND_CAST_FANTASY &&
-             (image.width != 384 || image.height != 192)) ||
+             (image.width != 96 || image.height != 112)) ||
             (cast_index == LAND_CAST_PLEB_BOUND &&
              (image.width != 222 || image.height != 222))) {
             (void)fprintf(stderr,
@@ -851,17 +870,32 @@ static int graphics_test(void)
     }
     for (cast_index = 0; cast_index < LAND_CAST_COUNT - 1; ++cast_index) {
         land_cast cast = (land_cast)(cast_index + 1);
+        bool fantasy = cast == LAND_CAST_FANTASY;
+        /* Fantasy is pixel art synced from kilix-fantasy: 16x24 characters
+         * and 40x40 portraits, against the 222/444 the other sheets use. */
+        int character_cell = fantasy ? 16 : 222;
+        int character_rows = fantasy ? 24 : 222;
+        int portrait_cell = fantasy ? 40 : 444;
         if (!land_graphics_cell(&graphics, character_graphics[cast_index],
                                 7, 3, &image) ||
-            image.width != 222 || image.height != 222 ||
+            image.width != character_cell ||
+            image.height != character_rows ||
             !land_graphics_cell(&graphics, portrait_graphics[cast_index],
                                 3, 1, &image) ||
-            image.width != 444 || image.height != 444 ||
-            !land_graphics_cell(&graphics, character_graphics[cast_index],
-                                4, 0, &source) ||
+            image.width != portrait_cell ||
+            image.height != portrait_cell ||
+            !land_graphics_cell(
+                &graphics, character_graphics[cast_index],
+                land_character_column(cast, LAND_SLOT_SIDE_A), 0,
+                &source) ||
             !land_graphics_hero_motion_cell(
                 &graphics, cast, LAND_HERO_MOTION_MIRRORED_SIDE, &mirror) ||
-            !mirror_matches(&source, &mirror)) {
+            (fantasy ?
+                (!land_graphics_cell(&graphics,
+                                     character_graphics[cast_index],
+                                     7, 0, &authored) ||
+                 !cells_match(&authored, &mirror)) :
+                !mirror_matches(&source, &mirror))) {
             (void)fprintf(stderr,
                           "FAIL cast graphics index=%d mirror=runtime\n",
                           cast_index + 1);

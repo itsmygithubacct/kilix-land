@@ -31,6 +31,38 @@ static void text_at(sr_canvas *canvas, const ki_td_view *view,
                    text_scale(view));
 }
 
+/*
+ * The cast sheets no longer share one aspect: fantasy is 16x24 pixel art
+ * where the others are square. Anchor on the height the layout already uses
+ * and take the width from the cell itself, so a non-square sheet is drawn at
+ * its true proportion instead of being squashed into a square box. Square
+ * cells return the height unchanged, so the other three casts are untouched.
+ */
+static int aspect_width(const ki_td_rgba8 *cell, int height)
+{
+    if (!ki_td_rgba8_is_valid(cell) || cell->height <= 0) return height;
+    return cell->width * height / cell->height;
+}
+
+/*
+ * Pixel art wants a whole-number scale. Fantasy's 16x24 cells at the house
+ * height of 92 land on 7.67x, which gives neighbouring source pixels
+ * different sizes on screen -- obvious next to a background authored at its
+ * native resolution. Round to the nearest whole multiple of the cell. Sheets
+ * whose cells are already at or above the house height (the 222x222 casts,
+ * which downscale) are returned unchanged.
+ */
+static int pixel_art_height(const ki_td_rgba8 *cell, int height)
+{
+    int scale;
+    if (!ki_td_rgba8_is_valid(cell) || cell->height <= 0 ||
+        cell->height >= height)
+        return height;
+    scale = (height + cell->height / 2) / cell->height;
+    if (scale < 1) scale = 1;
+    return cell->height * scale;
+}
+
 static bool draw_cell(ki_td_soft_renderer *renderer, const ki_td_view *view,
                       const land_graphics *graphics, land_graphic graphic,
                       int column, int row, float x, float y,
@@ -521,27 +553,32 @@ static bool standard_player_cell(const land_state *game,
                                  const land_graphics *graphics,
                                  land_cast cast, ki_td_rgba8 *cell)
 {
-    static const int side_columns[] = {4, 5, 4, 5};
+    static const land_character_slot side_slots[] = {
+        LAND_SLOT_SIDE_A, LAND_SLOT_SIDE_B,
+        LAND_SLOT_SIDE_A, LAND_SLOT_SIDE_B};
     int phase = standard_walk_phase(game);
-    int column = 0;
+    land_character_slot slot = LAND_SLOT_IDLE_DOWN;
     bool mirrored = false;
     land_hero_motion_variant variant = LAND_HERO_MOTION_DOWN_A;
     bool authored_side_faces_right =
         cast == LAND_CAST_FANTASY || cast == LAND_CAST_PLEB_BOUND;
     if (game->player_recovery_ticks > 0)
-        return land_graphics_cell(graphics, character_graphic(cast),
-                                  7, 0, cell);
+        return land_graphics_cell(
+            graphics, character_graphic(cast),
+            land_character_column(cast, LAND_SLOT_RECOVERY), 0, cell);
     if (game->attack_ticks > 0 &&
         game->attack >= LAND_ATTACK_ROOK_PREDATOR &&
         game->attack <= LAND_ATTACK_PIP_BENT_BAT)
-        return land_graphics_cell(graphics, character_graphic(cast),
-                                  6, 0, cell);
+        return land_graphics_cell(
+            graphics, character_graphic(cast),
+            land_character_column(cast, LAND_SLOT_ACTION), 0, cell);
     if (cast == LAND_CAST_CHUMRUNNER && game->aiming)
-        return land_graphics_cell(graphics, character_graphic(cast),
-                                  6, 0, cell);
+        return land_graphics_cell(
+            graphics, character_graphic(cast),
+            land_character_column(cast, LAND_SLOT_ACTION), 0, cell);
     if (game->facing == LAND_FACING_DOWN) {
         if (!game->player_moving || (phase & 1) == 0)
-            column = 0;
+            slot = LAND_SLOT_IDLE_DOWN;
         else
             return land_graphics_hero_motion_cell(
                 graphics, cast,
@@ -550,25 +587,26 @@ static bool standard_player_cell(const land_state *game,
                 cell);
     }
     else if (game->facing == LAND_FACING_UP) {
-        column = 3;
+        slot = LAND_SLOT_IDLE_UP;
         if (game->player_moving && (phase & 1) != 0)
             return land_graphics_hero_motion_cell(
                 graphics, cast, LAND_HERO_MOTION_UP_STEP, cell);
     } else if (game->facing == LAND_FACING_LEFT) {
-        column = game->player_moving ? side_columns[phase] : 4;
+        slot = game->player_moving ? side_slots[phase] : LAND_SLOT_SIDE_A;
         mirrored = authored_side_faces_right;
     } else {
-        column = game->player_moving ? side_columns[phase] : 4;
+        slot = game->player_moving ? side_slots[phase] : LAND_SLOT_SIDE_A;
         mirrored = !authored_side_faces_right;
     }
     if (mirrored) {
-        variant = column == 4 ? LAND_HERO_MOTION_MIRRORED_SIDE :
-                                LAND_HERO_MOTION_MIRRORED_WALK;
+        variant = slot == LAND_SLOT_SIDE_A ?
+            LAND_HERO_MOTION_MIRRORED_SIDE :
+            LAND_HERO_MOTION_MIRRORED_WALK;
         return land_graphics_hero_motion_cell(
             graphics, cast, variant, cell);
     }
     return land_graphics_cell(graphics, character_graphic(cast),
-                              column, 0, cell);
+                              land_character_column(cast, slot), 0, cell);
 }
 
 static void draw_actor(ki_td_soft_renderer *renderer, const ki_td_view *view,
@@ -636,10 +674,12 @@ static void draw_actor(ki_td_soft_renderer *renderer, const ki_td_view *view,
                         renderer, view, &cell, sprite_x, sprite_y,
                         cast == LAND_CAST_FANTASY ? 3 : 1);
                 } else {
+                    int player_height = pixel_art_height(
+                        &cell, STANDARD_PLAYER_RENDER_SIZE);
                     draw_foot_anchored(
                         renderer, view, &cell, sprite_x, sprite_y,
-                        STANDARD_PLAYER_RENDER_SIZE,
-                        STANDARD_PLAYER_RENDER_SIZE, 1.0f);
+                        aspect_width(&cell, player_height),
+                        player_height, 1.0f);
                 }
                 if (cast == LAND_CAST_FANTASY &&
                     game->attack_ticks > 0 &&
@@ -663,10 +703,23 @@ static void draw_actor(ki_td_soft_renderer *renderer, const ki_td_view *view,
                     renderer, view, x - 32.0f, y - 60.0f + bob,
                     &cell, 1.0f);
         } else {
+            ki_td_rgba8 npc;
+            int npc_width = 92;
+            int npc_height = 92;
+            if (land_graphics_cell(graphics, character_graphic(cast),
+                                   land_character_column(
+                                       cast, LAND_SLOT_IDLE_DOWN),
+                                   actor, &npc)) {
+                npc_height = pixel_art_height(&npc, 92);
+                npc_width = aspect_width(&npc, npc_height);
+            }
             (void)draw_cell(renderer, view, graphics,
-                            character_graphic(cast), 0, actor,
-                            x - 46.0f, y - 87.0f + bob,
-                            92, 92, 1.0f);
+                            character_graphic(cast),
+                            land_character_column(cast,
+                                                  LAND_SLOT_IDLE_DOWN),
+                            actor,
+                            x - (float)npc_width * 0.5f, y - 87.0f + bob,
+                            npc_width, npc_height, 1.0f);
         }
     }
 }
@@ -722,7 +775,11 @@ static void draw_training_enemy(ki_td_soft_renderer *renderer,
             column = game->enemy_hp <= 0 ? 3 :
                      (game->enemy_hit_ticks > 0 ? 2 :
                       (game->enemy_action == LAND_ENEMY_ACTION_ATTACK ? 1 : 0));
-        width = cast == LAND_CAST_FANTASY ? 136 : 102;
+        /* The fantasy cell changed from 384x192 to 96x112 when its source
+         * atlas was regenerated. Drawing the new near-square cell into the
+         * old 2:1 box would squash every enemy by half; 58x68 keeps them the
+         * height they were and restores the aspect. */
+        width = cast == LAND_CAST_FANTASY ? 58 : 102;
         height = cast == LAND_CAST_FANTASY ? 68 : 102;
     }
     draw_shadow(renderer, view, x, y, cast == LAND_CAST_FANTASY ? 34.0f :

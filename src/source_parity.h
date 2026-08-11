@@ -2,15 +2,15 @@
  * Every value below is read from the source games' committed history, never
  * from their working trees, so an in-flight art or balance pass in another
  * repository cannot reach Kilix Land until that repository commits it.
- * Source content digest: 59a560171216f3036b29fe28f21e357188ff6df13f42d0d97627dc3db097fa67
+ * Source content digest: 88a36eae6c554a23efc04b5c3930688439fc2f476babe1027f231cf21816a05a
  */
 #ifndef KILIX_LAND_SOURCE_PARITY_H
 #define KILIX_LAND_SOURCE_PARITY_H
 
-#define LAND_PARITY_LEGEND_SOURCE_COMMIT "4013b944e9fe"
-#define LAND_PARITY_CHUM_SOURCE_COMMIT "b40bef3200c0"
-#define LAND_PARITY_FANTASY_SOURCE_COMMIT "7097199c4745"
-#define LAND_PARITY_PLEB_SOURCE_COMMIT "62d075c26841"
+#define LAND_PARITY_LEGEND_SOURCE_COMMIT "d096b3c85a4e"
+#define LAND_PARITY_CHUM_SOURCE_COMMIT "07d5edb61fd2"
+#define LAND_PARITY_FANTASY_SOURCE_COMMIT "55c80e2b1c1a"
+#define LAND_PARITY_PLEB_SOURCE_COMMIT "42829b631c9f"
 
 #define LAND_PARITY_LEGEND_PLAYER_HP 6
 #define LAND_PARITY_LEGEND_MAX_RIFLE_CHARGE 8

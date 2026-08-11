@@ -121,6 +121,45 @@ typedef enum land_audio_event {
     LAND_AUDIO_RELOAD = 13
 } land_audio_event;
 
+/*
+ * Every cast is drawn through one house layout -- idle-down, the down-walk
+ * pair, idle-up, the authored side pair, the action pose, recovery -- which
+ * used to be columns 0..7 of every character atlas because all four sheets
+ * were authored to that shape.
+ *
+ * The fantasy cast is now synced from kilix-fantasy's own art, which is
+ * 24-column pixel art with its own vocabulary (walk-left-a, kneel-hurt,
+ * signature-work, ...). The slots below name what Land actually wants; the
+ * mapping turns a slot into that cast's real column, so no call site has to
+ * know which sheet it is talking to.
+ */
+typedef enum land_character_slot {
+    LAND_SLOT_IDLE_DOWN = 0,
+    LAND_SLOT_WALK_DOWN_A = 1,
+    LAND_SLOT_WALK_DOWN_B = 2,
+    LAND_SLOT_IDLE_UP = 3,
+    LAND_SLOT_SIDE_A = 4,
+    LAND_SLOT_SIDE_B = 5,
+    LAND_SLOT_ACTION = 6,
+    LAND_SLOT_RECOVERY = 7,
+    LAND_SLOT_COUNT = 8
+} land_character_slot;
+
+static inline int land_character_column(land_cast cast,
+                                        land_character_slot slot)
+{
+    /*
+     * Fantasy authors both sides, so the side pair is walk-right-* and the
+     * mirrored variants can use the authored walk-left-* rather than a
+     * reflection. signature-work is the action pose an RPG cast swings on;
+     * kneel-hurt is its recovery frame.
+     */
+    static const int FANTASY[LAND_SLOT_COUNT] = {0, 4, 5, 3, 10, 11, 21, 19};
+    static const int HOUSE[LAND_SLOT_COUNT] = {0, 1, 2, 3, 4, 5, 6, 7};
+    if (slot < 0 || slot >= LAND_SLOT_COUNT) return 0;
+    return cast == LAND_CAST_FANTASY ? FANTASY[slot] : HOUSE[slot];
+}
+
 typedef enum land_hero_motion_variant {
     LAND_HERO_MOTION_DOWN_A = 0,
     LAND_HERO_MOTION_DOWN_B = 1,
