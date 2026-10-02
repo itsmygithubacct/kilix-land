@@ -145,7 +145,7 @@
     {
       "id": "fantasy-portraits",
       "path": "assets/graphics/casts/fantasy-portraits.png",
-      "sha256": "fc21b6e9d52fae163625a1925c7f9abb792afa302f0eaea861b5fb42d94d6aad",
+      "sha256": "01bd4365cb12b6c3dbee024d5d5e02eab199a532d694a199ba8c738852004d3d",
       "alpha_required": true,
       "grid": {
         "columns": 27,
@@ -271,7 +271,7 @@
     {
       "id": "fantasy-enemies",
       "path": "assets/graphics/casts/fantasy-enemies.png",
-      "sha256": "f47b32c8e5599b2b36c87269ca3fb3f2be7237e58cfe6f6c81c5e8f8cfc60046",
+      "sha256": "aa5d27c7af4134fb1ef803b00d63ed7484a290695ae765cb4558ab0a295599da",
       "alpha_required": true,
       "grid": {
         "columns": 15,
