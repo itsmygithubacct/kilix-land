@@ -132,26 +132,33 @@ character/portrait/training/enemy assets byte-for-byte, refreshes their
 dimensions and manifest hashes, and imports 49 native UI/combat cues from the
 four games. Audio remains source-owned and byte-identical after the sync.
 
-Every one of those reads goes through each source game's **committed history**,
-never its working tree, and the generated header records the four source
-commits it was built from. A game part-way through an art or balance pass has
-files on disk its own history has not accepted yet; without this rule Land
-silently ships them, which is exactly how Arden's cast once arrived here as
-unfinished 16×24 placeholder art. Two cues follow from the same rule: Kilix
-Fantasy and Pleb Bound both have an `enemy_attack` sound on disk that neither
-has committed, so Land uses each game's committed attack swing for its enemy
-turn until they do.
+Every one of those reads goes through each source game's **published main**
+(`origin/main`), never its working tree or whichever branch is checked out,
+and the generated header records the four source commits it was built from.
+A game part-way through an art or balance pass has files on disk, and often
+commits on a work branch, that its own main has not accepted yet; without
+this rule Land silently ships them, which is exactly how Arden's cast once
+arrived here as unfinished 16×24 placeholder art. It also keeps every recorded
+source commit fetchable by anyone with access to that game. Two cues predate
+the same rule: Kilix Fantasy and Pleb Bound had no published `enemy_attack`
+sound when it was introduced, so Land maps each game's attack swing to its
+enemy turn.
 
 A source game may also change the shape of its art, not only its numbers.
 Land therefore declares each atlas's own column/row layout, and the check
 fails whenever a copied sheet no longer divides into it — which is what a
 source-side raster change looks like from here.
 
-After changing a source game, update Land with:
+After a source game publishes to its main, fetch it and update Land:
 
 ```sh
+git -C ../<source-game> fetch origin main
 make parity-sync
 ```
+
+The tool never touches the network, so `origin/main` is only as fresh as the
+last fetch. A source game present without that ref fails the check rather
+than skipping it.
 
 `make test` begins with `make parity-check`, so stale generated data, copied
 art, or manifest hashes fail immediately instead of silently drifting. Kilix
