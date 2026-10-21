@@ -23,6 +23,12 @@ their source-game standard attack. Opponents also advance or strafe, use their
 authored attack pose, telegraph a captured target, deal source-game damage,
 and reset the duel after knocking the protagonist out.
 
+Walk up through the top-left of the social room, under the CONSERVATORY
+marker, to reach the third location: a conservatory holding a real
+[pleb-plant-grower](https://github.com/itsmygithubacct/pleb-plant-grower)
+houseplant. It keeps growing on the wall clock while you are elsewhere in Land
+or not playing at all, and it saves separately from the standalone game.
+
 ![Choose a protagonist and matching cast](docs/cast-menu.png)
 
 The rooms, proximity prompts, portrait cards, typewriter dialogue, progress
@@ -47,6 +53,7 @@ Controls:
 - Enter or Space in the cast menu: start with the selected cast.
 - Hold WASD or the arrow keys in the room: walk continuously.
 - Walk through the right edge: enter the selected cast's training range.
+- Walk up under the CONSERVATORY marker: enter the conservatory.
 - Z in the training range: swing Kilix's rifle butt, Rook's pistol butt,
   Arden's Bronze Blade, or Pip's Bent Bat even when no target is in reach.
 - Tap X as Kilix or Rook to enter aim mode. Move the 2D reticle with WASD
@@ -57,9 +64,19 @@ Controls:
   shot; keep space from melee opponents when they begin their lunge.
 - Enter or Space near an ally: talk, reveal the current line, or continue.
 - C: reopen the cast menu and switch the whole room cast.
-- Escape: close dialogue, return from the cast menu, leave training, or exit
-  from the social room.
+- Escape: close dialogue, return from the cast menu, leave training or the
+  conservatory, or exit from the social room.
 - Q or Ctrl-C: exit.
+
+In the conservatory the letters are the plant's care verbs, not movement.
+A strip along the bottom names the ones in use, and H opens the full list:
+
+- C check the soil, L lift the pot, W water, F feed, M mist, R rotate,
+  P wipe the leaves, T trim, O repot, D empty the saucer, S sleeve in or out.
+- K calendar, J journal, B plant label, H the key list.
+- Arrows move through lists and the calendar; Enter chooses.
+- Escape closes the key list, calendar, journal, or away report first, and
+  otherwise walks back out to the crew.
 
 Set `KILIX_LAND_ASSETS` to the project root if launching the executable from a
 different working directory.
@@ -87,6 +104,41 @@ left; Arden and Pip face right), with runtime mirrors for the opposite
 direction. Pip's upward steps mirror only the lower-body region, so equipment
 and torsos stay fixed. Every pose is aligned by its upper-body spine and lowest
 opaque foot pixel; held keys feed the fixed 60 Hz simulation directly.
+
+## The conservatory
+
+![The way up from the social room, and the plant inside](docs/conservatory.png)
+
+The conservatory embeds pleb-plant-grower as a library, following that game's
+[`docs/EMBEDDING.md`](https://github.com/itsmygithubacct/pleb-plant-grower/blob/main/docs/EMBEDDING.md).
+It is the `third_party/pleb-plant-grower` submodule, linked as
+`libpleb-plant-grower.a`. Land keeps the terminal, the 60 Hz loop and the
+mixer. The plant gets the canvas and the keys while the player is inside.
+Everything that knows the plant's internals is in `src/conservatory.c`, and
+`src/game.c` only ever sees `LAND_LOCATION_CONSERVATORY`.
+
+- **Time.** Land hands the plant a fresh wall clock, boot clock, boot id and
+  local UTC offset on every step. Biology advances once per wall second; on
+  each entry the plant reconciles the time spent away and opens on a "while
+  you were away" report when anything happened.
+- **Saving.** The plant saves when you leave and when Land exits, under
+  `$XDG_DATA_HOME/kilix-land/pleb-plant-grower/` (normally
+  `~/.local/share/kilix-land/pleb-plant-grower/`). It never reads the
+  standalone game's save, and Land ignores the standalone's
+  `PLEB_PLANT_CONFIG_HOME` override. Without a usable home directory the
+  plant still plays, but it does not persist.
+- **Sound.** The plant's 17 cues play through Land's mixer from a bank of
+  their own, since the four casts already fill 56 of the mixer's 64 cue slots.
+  Plant UI cues use the UI bus; care sounds use the effects bus.
+- **Assets.** The plant's sound bank and three procedural atlases are build
+  products it keeps out of git. `make` runs the plant's own generators inside
+  the submodule, which regenerate them byte for byte, and the submodule's
+  `.gitignore` keeps them out of its status.
+- **One SDK.** Host and archive share struct layouts, so both must be built
+  from one `kilix-game-sdk` commit. Land exports its SDK checkout to the
+  archive's sub-make, and `make sdk-check` (part of `make test`) fails if that
+  commit differs from the one pleb-plant-grower itself pins. Land refuses to
+  start if `pg_state_size()` disagrees with its own `sizeof(pg_state)`.
 
 ## Source-game combat parity
 
@@ -175,23 +227,39 @@ make test
 
 The test suite checks:
 
+- that Land and pleb-plant-grower build from one `kilix-game-sdk` commit;
 - menu wrapping, cast confirmation, all four cast profiles, and all 24
   first/repeat dialogue scripts;
+- the conservatory door for every cast: entering only through the marked
+  stretch of wall, the room standing still inside, and Escape returning the
+  player beneath it;
 - all 21 runtime graphics resources—including four social backgrounds, four
   source-game training backdrops, four enemy atlases, and the generated
   in-memory mirror cells;
-- all 49 source-game WAV cues through an offline mixer render;
+- all 49 source-game WAV cues and all 17 plant cues through an offline mixer
+  render;
 - headless menu, room, and dialogue scenes;
 - room and dialogue output for every cast under `build/cast-preview/`;
 - source-enemy and in-progress attack output for every training range under
   `build/training-preview/`;
 - 128 simulation-driven walking frames covering all four directions for every
-  cast under `build/walk-preview/`.
+  cast under `build/walk-preview/`;
+- a conservatory session against a fixed clock and a private data root: Escape
+  routing, a care verb and its sound, wall-clock aging, a byte-identical
+  reload, three days away reconciled, a first run creating Land's data
+  directory, and play without one;
+- the door, the plant, its key list and calendar, and the plant at 800x450
+  and 1280x720 under `build/conservatory-preview/`.
+
+`make sanitize` rebuilds with clang's address and undefined-behavior
+sanitizers, with leak detection on, and runs the same suite.
 
 ## Shared libraries
 
 The shared libraries come from one recursive submodule,
 `third_party/kilix-game-sdk`; `git submodule status` shows its pinned
+revision. The conservatory's game is a second submodule,
+`third_party/pleb-plant-grower`, pinned to a commit that uses the same SDK
 revision. The four libraries Land builds against are reached through
 symlinks beside it:
 

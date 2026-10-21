@@ -1,9 +1,14 @@
 #include "kilix_land.h"
+#include "conservatory.h"
+
+#include "pg_save.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 typedef struct land_input {
@@ -69,7 +74,13 @@ static void apply_movement_key(land_input *input, uint32_t key)
     else if (key == KITTYKB_KEY_RIGHT) input->move_x = 1;
 }
 
-static bool poll_input(land_input *input, bool *quit_requested)
+/*
+ * Inside the conservatory the plant owns every key but quit and Escape:
+ * letters are its verbs, not WASD, and nothing walks. Escape is reported as
+ * cancel so the loop can decide whether it leaves or closes a plant panel.
+ */
+static bool poll_input(land_input *input, bool *quit_requested,
+                       land_conservatory *conservatory)
 {
     static const uint32_t directions[] = {
         KITTYKB_KEY_UP, KITTYKB_KEY_DOWN,
@@ -88,7 +99,21 @@ static bool poll_input(land_input *input, bool *quit_requested)
         return false;
 
     while (kittyts_next_key_event(&terminal_session, &event)) {
-        uint32_t movement_key = normalize_movement_key(event.key);
+        uint32_t movement_key;
+        if (conservatory) {
+            if (event.action == KITTYKB_ACTION_PRESS &&
+                ((event_letter(&event, 'c') &&
+                  (event.modifiers & KITTYKB_MOD_CTRL) != 0u) ||
+                 event_letter(&event, 'q')))
+                *quit_requested = true;
+            else if (event.action == KITTYKB_ACTION_PRESS &&
+                     event.key == KITTYKB_KEY_ESCAPE)
+                input->cancel_pressed = true;
+            else
+                land_conservatory_key(conservatory, &event);
+            continue;
+        }
+        movement_key = normalize_movement_key(event.key);
         if (movement_key != KITTYKB_KEY_NONE &&
             event.action != KITTYKB_ACTION_RELEASE)
             last_movement_key = movement_key;
@@ -117,6 +142,10 @@ static bool poll_input(land_input *input, bool *quit_requested)
                    kittykb_event_matches_key(&event, (uint32_t)' ')) {
             input->interact_pressed = true;
         }
+    }
+    if (conservatory) {
+        last_movement_key = KITTYKB_KEY_NONE;
+        return true;
     }
     if (last_movement_key != KITTYKB_KEY_NONE &&
         movement_key_down(last_movement_key)) {
@@ -225,16 +254,20 @@ static void play_state_audio(land_audio *audio,
 static int audio_test(void)
 {
     size_t loaded = 0u;
-    if (!land_audio_assets_selftest(asset_root(), &loaded) ||
-        loaded != LAND_AUDIO_SOURCE_CUE_COUNT) {
+    size_t plant = 0u;
+    if (!land_audio_assets_selftest(asset_root(), &loaded, &plant) ||
+        loaded != LAND_AUDIO_SOURCE_CUE_COUNT ||
+        plant != LAND_AUDIO_PLANT_CUE_COUNT) {
         (void)fprintf(stderr,
-                      "FAIL native audio loaded=%zu/%d\n",
-                      loaded, LAND_AUDIO_SOURCE_CUE_COUNT);
+                      "FAIL native audio loaded=%zu/%d plant=%zu/%d\n",
+                      loaded, LAND_AUDIO_SOURCE_CUE_COUNT,
+                      plant, LAND_AUDIO_PLANT_CUE_COUNT);
         return EXIT_FAILURE;
     }
     (void)printf(
-        "PASS native-audio casts=%d source-cues=%zu mixer=offline\n",
-        LAND_CAST_COUNT, loaded);
+        "PASS native-audio casts=%d source-cues=%zu plant-cues=%zu "
+        "mixer=offline\n",
+        LAND_CAST_COUNT, loaded, plant);
     return EXIT_SUCCESS;
 }
 
@@ -745,10 +778,90 @@ static int selftest(void)
         (void)fprintf(stderr, "FAIL bounded movement: %s\n", error);
         return EXIT_FAILURE;
     }
+    /* The conservatory door: walking up through the top-left of the social
+     * room enters it, Escape leaves it, and nothing else does either. */
+    for (int door_cast = 0; door_cast < LAND_CAST_COUNT; ++door_cast) {
+        land_state visit;
+        land_state inside;
+        land_game_init(&visit);
+        visit.cast_cursor = (land_cast)door_cast;
+        if (!land_game_confirm_cast(&visit)) {
+            (void)fprintf(stderr, "FAIL conservatory cast=%d confirm\n",
+                          door_cast);
+            return EXIT_FAILURE;
+        }
+        visit.player_x = LAND_CONSERVATORY_DOOR_RIGHT + 30.0f;
+        for (guard = 0; guard < 200; ++guard)
+            land_game_update(&visit, 0, -1, LAND_TICK_SECONDS);
+        if (visit.location != LAND_LOCATION_SOCIAL) {
+            (void)fprintf(stderr,
+                          "FAIL conservatory cast=%d entered beside the door\n",
+                          door_cast);
+            return EXIT_FAILURE;
+        }
+        visit.player_x = LAND_CONSERVATORY_DOOR_LEFT + 30.0f;
+        for (guard = 0; guard < 200 &&
+                        visit.location == LAND_LOCATION_SOCIAL; ++guard)
+            land_game_update(&visit, 0, -1, LAND_TICK_SECONDS);
+        if (visit.location != LAND_LOCATION_CONSERVATORY ||
+            visit.nearest_actor != -1 ||
+            !land_game_validate(&visit, error, sizeof error)) {
+            (void)fprintf(stderr,
+                          "FAIL conservatory cast=%d door did not open: %s\n",
+                          door_cast, error);
+            return EXIT_FAILURE;
+        }
+        inside = visit;
+        for (guard = 0; guard < 120; ++guard)
+            land_game_update(&visit, guard % 2 ? 1 : -1, 1,
+                             LAND_TICK_SECONDS);
+        land_game_open_cast_select(&visit);
+        if (land_game_interact(&visit) || land_game_attack(&visit) ||
+            land_game_reload(&visit) ||
+            visit.location != LAND_LOCATION_CONSERVATORY ||
+            visit.mode != LAND_MODE_ROOM ||
+            visit.player_x != inside.player_x ||
+            visit.player_y != inside.player_y ||
+            visit.simulation_tick != inside.simulation_tick + 120u ||
+            !land_game_validate(&visit, error, sizeof error)) {
+            (void)fprintf(stderr,
+                          "FAIL conservatory cast=%d room acted inside\n",
+                          door_cast);
+            return EXIT_FAILURE;
+        }
+        land_game_cancel(&visit);
+        if (visit.location != LAND_LOCATION_SOCIAL ||
+            visit.facing != LAND_FACING_DOWN ||
+            visit.player_x < LAND_CONSERVATORY_DOOR_LEFT ||
+            visit.player_x > LAND_CONSERVATORY_DOOR_RIGHT ||
+            !land_game_validate(&visit, error, sizeof error)) {
+            (void)fprintf(stderr,
+                          "FAIL conservatory cast=%d did not leave: %s\n",
+                          door_cast, error);
+            return EXIT_FAILURE;
+        }
+        for (guard = 0; guard < 30; ++guard)
+            land_game_update(&visit, 0, 1, LAND_TICK_SECONDS);
+        if (visit.location != LAND_LOCATION_SOCIAL) {
+            (void)fprintf(stderr,
+                          "FAIL conservatory cast=%d re-entered walking away\n",
+                          door_cast);
+            return EXIT_FAILURE;
+        }
+        for (guard = 0; guard < 200 &&
+                        visit.location == LAND_LOCATION_SOCIAL; ++guard)
+            land_game_update(&visit, 0, -1, LAND_TICK_SECONDS);
+        if (visit.location != LAND_LOCATION_CONSERVATORY) {
+            (void)fprintf(stderr,
+                          "FAIL conservatory cast=%d did not re-enter\n",
+                          door_cast);
+            return EXIT_FAILURE;
+        }
+    }
     (void)printf(
         "PASS selftest casts=%d actors-per-cast=%d dialogue-scripts=24 "
         "training-rosters=4 source-attacks=4 active-enemies=4 "
-        "bounds=two-room\n",
+        "bounds=three-room\n",
         LAND_CAST_COUNT, LAND_ACTOR_COUNT);
     return EXIT_SUCCESS;
 }
@@ -1260,6 +1373,313 @@ static int walk_render_test(const char *directory)
     return EXIT_SUCCESS;
 }
 
+/* A fixed instant for deterministic plant tests: 2027-06-15 12:00 UTC. */
+#define CONSERVATORY_TEST_WALL INT64_C(1813060800)
+
+static pg_now conservatory_test_now(int64_t offset)
+{
+    pg_now now;
+    (void)memset(&now, 0, sizeof now);
+    now.wall_s = CONSERVATORY_TEST_WALL + offset;
+    now.boot_s = INT64_C(1000) + offset;
+    return now;
+}
+
+static kittykb_event conservatory_test_key(uint32_t key)
+{
+    kittykb_event event;
+    (void)memset(&event, 0, sizeof event);
+    event.key = key;
+    event.action = KITTYKB_ACTION_PRESS;
+    return event;
+}
+
+static void conservatory_test_press(land_conservatory *conservatory,
+                                    uint32_t key, int64_t offset)
+{
+    kittykb_event event = conservatory_test_key(key);
+    land_conservatory_key(conservatory, &event);
+    land_conservatory_step(conservatory, conservatory_test_now(offset),
+                           LAND_TICK_SECONDS);
+}
+
+/* The record with its generation pinned: the store numbers each write it
+ * makes without touching the caller's state, so that counter is the one
+ * field a reload is meant to change. */
+static bool conservatory_test_encode(const land_conservatory *conservatory,
+                                     uint8_t *bytes, size_t capacity,
+                                     size_t *written)
+{
+    return pg_save_encode_with_sequence(&conservatory->plant, 0u, bytes,
+                                        capacity, written);
+}
+
+#define CONSERVATORY_FAIL(message) do {                                    \
+    (void)fprintf(stderr, "FAIL conservatory %s\n", message);             \
+    land_conservatory_shutdown(&conservatory);                            \
+    return EXIT_FAILURE;                                                  \
+} while (0)
+
+/*
+ * The plant session as the interactive loop drives it, against a fixed clock
+ * and a private data root: first entry, Escape routing, a care verb and its
+ * sound, wall-clock aging, and the save surviving a fresh session.
+ */
+static int conservatory_test(const char *directory)
+{
+    static land_conservatory conservatory;
+    static uint8_t saved[4096];
+    static uint8_t reloaded[4096];
+    pg_audio_event events[PG_AUDIO_QUEUE_MAX];
+    char data_root[PATH_MAX];
+    char fresh_root[PATH_MAX + 32];
+    char plant_dir[PATH_MAX + 64];
+    char error[160];
+    size_t saved_size = 0u;
+    size_t reloaded_size = 0u;
+    size_t count;
+    size_t index;
+    bool misted = false;
+    struct stat info;
+
+    land_conservatory_init(&conservatory);
+    if (!land_conservatory_abi_ok()) CONSERVATORY_FAIL("pg_state ABI");
+    if (!directory || !realpath(directory, data_root))
+        CONSERVATORY_FAIL("data root is not a directory");
+
+    land_conservatory_enter(&conservatory, asset_root(), data_root,
+                            conservatory_test_now(0));
+    if (!conservatory.started || !conservatory.graphics_ready ||
+        !conservatory.store_ready)
+        CONSERVATORY_FAIL("first entry did not load graphics and save");
+    if (!pg_validate(&conservatory.plant, error, sizeof error))
+        CONSERVATORY_FAIL("first entry state is invalid");
+    if (conservatory.plant.ui.screen != (uint8_t)PG_SCREEN_PLANT ||
+        !land_conservatory_escape(&conservatory))
+        CONSERVATORY_FAIL("Escape on the plant does not leave");
+
+    /* Escape closes the plant's own panels before it leaves. */
+    conservatory_test_press(&conservatory, (uint32_t)'h', 0);
+    if (!conservatory.plant.ui.help_open ||
+        land_conservatory_escape(&conservatory))
+        CONSERVATORY_FAIL("Escape left with help open");
+    land_conservatory_step(&conservatory, conservatory_test_now(0),
+                           LAND_TICK_SECONDS);
+    if (conservatory.plant.ui.help_open)
+        CONSERVATORY_FAIL("Escape did not close help");
+    conservatory_test_press(&conservatory, (uint32_t)'k', 0);
+    if (conservatory.plant.ui.screen != (uint8_t)PG_SCREEN_CALENDAR ||
+        land_conservatory_escape(&conservatory))
+        CONSERVATORY_FAIL("Escape left from the calendar");
+    land_conservatory_step(&conservatory, conservatory_test_now(0),
+                           LAND_TICK_SECONDS);
+    if (conservatory.plant.ui.screen != (uint8_t)PG_SCREEN_PLANT)
+        CONSERVATORY_FAIL("Escape did not close the calendar");
+
+    /* Mist is never refused, so it always reaches the mixer queue. Land's
+     * walking keys are the plant's verbs in here: W waters, not walks. */
+    (void)land_conservatory_take_audio(&conservatory, events,
+                                       PG_AUDIO_QUEUE_MAX);
+    conservatory_test_press(&conservatory, (uint32_t)'m', 1);
+    count = land_conservatory_take_audio(&conservatory, events,
+                                         PG_AUDIO_QUEUE_MAX);
+    for (index = 0u; index < count; ++index)
+        if (events[index].kind == (uint8_t)PG_AUDIO_MIST) misted = true;
+    if (!misted) CONSERVATORY_FAIL("mist queued no sound");
+    if (land_conservatory_take_audio(&conservatory, events,
+                                     PG_AUDIO_QUEUE_MAX) != 0u)
+        CONSERVATORY_FAIL("audio queue was not take-and-clear");
+
+    /* An hour inside ages the plant from the wall clock, not from frames. */
+    land_conservatory_step(&conservatory, conservatory_test_now(3600),
+                           LAND_TICK_SECONDS);
+    if (conservatory.plant.anchor.last_wall_s != CONSERVATORY_TEST_WALL + 3600)
+        CONSERVATORY_FAIL("wall clock did not reach the plant");
+
+    land_conservatory_leave(&conservatory);
+    if (!conservatory_test_encode(&conservatory, saved, sizeof saved,
+                                  &saved_size))
+        CONSERVATORY_FAIL("state did not encode");
+    land_conservatory_shutdown(&conservatory);
+    if (snprintf(plant_dir, sizeof plant_dir, "%s/pleb-plant-grower",
+                 data_root) >= (int)sizeof plant_dir ||
+        stat(plant_dir, &info) != 0 || !S_ISDIR(info.st_mode))
+        CONSERVATORY_FAIL("save is not under Land's data root");
+
+    /* A fresh session at the same instant loads exactly what was left. */
+    land_conservatory_init(&conservatory);
+    land_conservatory_enter(&conservatory, asset_root(), data_root,
+                            conservatory_test_now(3600));
+    if (!conservatory_test_encode(&conservatory, reloaded, sizeof reloaded,
+                                  &reloaded_size) ||
+        reloaded_size != saved_size ||
+        memcmp(saved, reloaded, saved_size) != 0)
+        CONSERVATORY_FAIL("reloaded plant differs from the saved one");
+
+    /* Three days away: the next visit opens on what happened meanwhile. */
+    land_conservatory_leave(&conservatory);
+    land_conservatory_enter(&conservatory, asset_root(), data_root,
+                            conservatory_test_now(3600 + 3 * 86400));
+    if (conservatory.plant.anchor.last_wall_s !=
+            CONSERVATORY_TEST_WALL + 3600 + 3 * 86400 ||
+        !pg_validate(&conservatory.plant, error, sizeof error))
+        CONSERVATORY_FAIL("time away was not reconciled");
+    if (conservatory.plant.ui.screen == (uint8_t)PG_SCREEN_AWAY) {
+        if (land_conservatory_escape(&conservatory))
+            CONSERVATORY_FAIL("Escape skipped the away report");
+        land_conservatory_step(&conservatory,
+                               conservatory_test_now(3600 + 3 * 86400),
+                               LAND_TICK_SECONDS);
+    }
+    if (conservatory.plant.ui.screen != (uint8_t)PG_SCREEN_PLANT ||
+        !land_conservatory_escape(&conservatory))
+        CONSERVATORY_FAIL("did not return to the plant after time away");
+    land_conservatory_shutdown(&conservatory);
+
+    /* A first run: Land's data root does not exist yet, and the standalone
+     * game's save override is set. The root is created and the override is
+     * not followed. */
+    if (snprintf(plant_dir, sizeof plant_dir, "%s/standalone", data_root) >=
+            (int)sizeof plant_dir ||
+        setenv("PLEB_PLANT_CONFIG_HOME", plant_dir, 1) != 0 ||
+        snprintf(fresh_root, sizeof fresh_root, "%s/fresh/kilix-land",
+                 data_root) >= (int)sizeof fresh_root)
+        CONSERVATORY_FAIL("could not stage a first run");
+    land_conservatory_init(&conservatory);
+    land_conservatory_enter(&conservatory, asset_root(), fresh_root,
+                            conservatory_test_now(0));
+    land_conservatory_leave(&conservatory);
+    if (!conservatory.store_ready || stat(plant_dir, &info) == 0)
+        CONSERVATORY_FAIL("first run followed the standalone save");
+    if (snprintf(plant_dir, sizeof plant_dir, "%s/pleb-plant-grower",
+                 fresh_root) >= (int)sizeof plant_dir ||
+        stat(plant_dir, &info) != 0 || !S_ISDIR(info.st_mode))
+        CONSERVATORY_FAIL("first run did not create Land's data root");
+    land_conservatory_shutdown(&conservatory);
+
+    /* No data root: the plant still plays, and saves nowhere. */
+    land_conservatory_init(&conservatory);
+    land_conservatory_enter(&conservatory, asset_root(), NULL,
+                            conservatory_test_now(0));
+    if (!conservatory.started || conservatory.store_ready)
+        CONSERVATORY_FAIL("played without a data root incorrectly");
+    land_conservatory_shutdown(&conservatory);
+
+    (void)printf("PASS conservatory abi=%zu save=%zuB escape=routed "
+                 "audio=take-and-clear aging=wall-clock away=reconciled "
+                 "first-run=created\n",
+                 pg_state_size(), saved_size);
+    return EXIT_SUCCESS;
+}
+
+#undef CONSERVATORY_FAIL
+
+static bool conservatory_render_write(ki_td_soft_renderer *renderer,
+                                      const land_conservatory *conservatory,
+                                      const char *directory,
+                                      const char *name)
+{
+    char path[1024];
+    int written = snprintf(path, sizeof path, "%s/%s.ppm", directory, name);
+    return written > 0 && (size_t)written < sizeof path &&
+           land_conservatory_render(renderer, conservatory) &&
+           sr_write_ppm(ki_td_soft_canvas(renderer), path);
+}
+
+/* The door from the social room, and the plant screens Land hands the
+ * canvas to: home, help and calendar, at Land's own minimum and maximum
+ * framebuffer sizes. */
+static int conservatory_render_test(const char *directory)
+{
+    static land_conservatory conservatory;
+    land_graphics graphics;
+    ki_td_soft_renderer renderer = {0};
+    land_state game;
+    char path[1024];
+    int files = 0;
+    int guard;
+    bool entered;
+    bool success = true;
+
+    if (!directory || !land_graphics_init(&graphics, asset_root()))
+        return EXIT_FAILURE;
+    if (!ki_td_soft_renderer_init(&renderer, 960, 540)) {
+        land_graphics_shutdown(&graphics);
+        return EXIT_FAILURE;
+    }
+    land_game_init(&game);
+    (void)land_game_confirm_cast(&game);
+    /* Through the door and straight back out: the frame a player sees on
+     * returning, under the doorway with the toast up. */
+    game.player_x = LAND_CONSERVATORY_DOOR_LEFT + 30.0f;
+    for (guard = 0; guard < 120 &&
+                    game.location == LAND_LOCATION_SOCIAL; ++guard)
+        land_game_update(&game, 0, -1, LAND_TICK_SECONDS);
+    entered = game.location == LAND_LOCATION_CONSERVATORY;
+    land_game_cancel(&game);
+    if (snprintf(path, sizeof path, "%s/door.ppm", directory) >=
+            (int)sizeof path ||
+        !entered || game.location != LAND_LOCATION_SOCIAL ||
+        !land_render(&renderer, &game, &graphics) ||
+        !sr_write_ppm(ki_td_soft_canvas(&renderer), path))
+        success = false;
+    else
+        files++;
+
+    land_conservatory_init(&conservatory);
+    land_conservatory_enter(&conservatory, asset_root(), NULL,
+                            conservatory_test_now(0));
+    if (success && conservatory_render_write(&renderer, &conservatory,
+                                             directory, "plant"))
+        files++;
+    else
+        success = false;
+    conservatory_test_press(&conservatory, (uint32_t)'h', 0);
+    if (success && conservatory_render_write(&renderer, &conservatory,
+                                             directory, "help"))
+        files++;
+    else
+        success = false;
+    (void)land_conservatory_escape(&conservatory);
+    land_conservatory_step(&conservatory, conservatory_test_now(0),
+                           LAND_TICK_SECONDS);
+    conservatory_test_press(&conservatory, (uint32_t)'k', 0);
+    if (success && conservatory_render_write(&renderer, &conservatory,
+                                             directory, "calendar"))
+        files++;
+    else
+        success = false;
+    (void)land_conservatory_escape(&conservatory);
+    land_conservatory_step(&conservatory, conservatory_test_now(0),
+                           LAND_TICK_SECONDS);
+    if (success &&
+        ki_td_soft_renderer_resize(&renderer, 800, 450) &&
+        conservatory_render_write(&renderer, &conservatory, directory,
+                                  "plant-800x450"))
+        files++;
+    else
+        success = false;
+    if (success &&
+        ki_td_soft_renderer_resize(&renderer, 1280, 720) &&
+        conservatory_render_write(&renderer, &conservatory, directory,
+                                  "plant-1280x720"))
+        files++;
+    else
+        success = false;
+    land_conservatory_shutdown(&conservatory);
+    ki_td_soft_renderer_destroy(&renderer);
+    land_graphics_shutdown(&graphics);
+    if (!success) {
+        (void)fprintf(stderr, "FAIL conservatory render after %d files\n",
+                      files);
+        return EXIT_FAILURE;
+    }
+    (void)printf("PASS render scene=conservatory files=%d door=yes "
+                 "screens=plant,help,calendar sizes=800x450,960x540,"
+                 "1280x720 directory=%s\n", files, directory);
+    return EXIT_SUCCESS;
+}
+
 static int run_interactive(void)
 {
     kittyts_options terminal_options;
@@ -1272,6 +1692,9 @@ static int run_interactive(void)
     land_state game;
     land_input current_input;
     land_input pending_input = {0};
+    static land_conservatory conservatory;
+    char data_root[1024];
+    bool have_data_root;
     bool quit_requested = false;
     bool failed = false;
     bool first_frame = true;
@@ -1279,6 +1702,14 @@ static int run_interactive(void)
     int width;
     int height;
 
+    if (!land_conservatory_abi_ok()) {
+        (void)fprintf(stderr,
+            "kilix-land: pleb-plant-grower was built against a different "
+            "pg_state layout; rebuild both from one SDK checkout\n");
+        return EXIT_FAILURE;
+    }
+    land_conservatory_init(&conservatory);
+    have_data_root = land_conservatory_data_root(data_root, sizeof data_root);
     land_game_init(&game);
     if (!land_graphics_init(&graphics, asset_root())) {
         (void)fprintf(stderr,
@@ -1334,11 +1765,17 @@ static int run_interactive(void)
         int resized_height;
         int64_t now;
 
-        if (!poll_input(&current_input, &quit_requested)) {
+        if (!poll_input(&current_input, &quit_requested,
+                        game.location == LAND_LOCATION_CONSERVATORY ?
+                        &conservatory : NULL)) {
             failed = true;
             break;
         }
         if (quit_requested) break;
+        if (current_input.cancel_pressed &&
+            game.location == LAND_LOCATION_CONSERVATORY &&
+            !land_conservatory_escape(&conservatory))
+            current_input.cancel_pressed = false;
         if (current_input.cancel_pressed &&
             ((game.mode == LAND_MODE_ROOM &&
               game.location == LAND_LOCATION_SOCIAL) ||
@@ -1352,6 +1789,7 @@ static int run_interactive(void)
         now = kilix_game_monotonic_ns();
         frame = kilix_game_clock_advance(&clock, now);
         for (step = 0u; step < frame.steps; ++step) {
+            land_location location_before = game.location;
             if (pending_input.cast_pressed) {
                 land_mode previous_mode = game.mode;
                 land_game_open_cast_select(&game);
@@ -1400,6 +1838,28 @@ static int run_interactive(void)
                              pending_input.move_y, LAND_TICK_SECONDS);
                 play_state_audio(&audio, &before_update, &game);
             }
+            if (location_before != LAND_LOCATION_CONSERVATORY &&
+                game.location == LAND_LOCATION_CONSERVATORY)
+                land_conservatory_enter(&conservatory, asset_root(),
+                                        have_data_root ? data_root : NULL,
+                                        land_conservatory_now());
+            else if (location_before == LAND_LOCATION_CONSERVATORY &&
+                     game.location != LAND_LOCATION_CONSERVATORY)
+                land_conservatory_leave(&conservatory);
+            if (game.location == LAND_LOCATION_CONSERVATORY) {
+                pg_audio_event events[PG_AUDIO_QUEUE_MAX];
+                size_t count;
+                size_t index;
+                land_conservatory_step(&conservatory,
+                                       land_conservatory_now(),
+                                       LAND_TICK_SECONDS);
+                count = land_conservatory_take_audio(
+                    &conservatory, events, PG_AUDIO_QUEUE_MAX);
+                for (index = 0u; index < count; ++index)
+                    land_audio_play_plant(&audio, events[index].kind,
+                                          events[index].gain,
+                                          events[index].pitch);
+            }
             land_audio_update(&audio, LAND_TICK_SECONDS);
             consume_edge_input(&pending_input);
         }
@@ -1417,7 +1877,11 @@ static int run_interactive(void)
         }
         if (first_frame ||
             game.simulation_tick / 2u != last_presented_step / 2u) {
-            if (!land_render(&renderer, &game, &graphics) ||
+            bool rendered =
+                game.location == LAND_LOCATION_CONSERVATORY ?
+                land_conservatory_render(&renderer, &conservatory) :
+                land_render(&renderer, &game, &graphics);
+            if (!rendered ||
                 !kittyts_present(&terminal_session, renderer.rgba,
                                  width, height)) {
                 failed = true;
@@ -1431,6 +1895,7 @@ static int run_interactive(void)
     }
 
 done:
+    land_conservatory_shutdown(&conservatory);
     ki_td_soft_renderer_destroy(&renderer);
     kittyts_stop(&terminal_session);
     kilix_game_signals_restore(&signals);
@@ -1445,7 +1910,8 @@ static void usage(const char *program)
         "usage: %s [--selftest | --graphics-test | --menu-render-test FILE | "
         "--room-render-test FILE | --render-test FILE | "
         "--cast-render-test DIR | --training-render-test DIR | "
-        "--walk-render-test DIR | --audio-test | --version]\n",
+        "--walk-render-test DIR | --conservatory-test DIR | "
+        "--conservatory-render-test DIR | --audio-test | --version]\n",
         program);
 }
 
@@ -1469,8 +1935,12 @@ int main(int argc, char **argv)
         return training_render_test(argv[2]);
     if (argc == 3 && strcmp(argv[1], "--walk-render-test") == 0)
         return walk_render_test(argv[2]);
+    if (argc == 3 && strcmp(argv[1], "--conservatory-test") == 0)
+        return conservatory_test(argv[2]);
+    if (argc == 3 && strcmp(argv[1], "--conservatory-render-test") == 0)
+        return conservatory_render_test(argv[2]);
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
-        (void)printf("kilix-land 0.3.0\n");
+        (void)printf("kilix-land 0.4.0\n");
         return EXIT_SUCCESS;
     }
     usage(argv[0]);

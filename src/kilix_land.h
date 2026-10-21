@@ -21,10 +21,16 @@
 #define LAND_GRAPHICS_COUNT 21
 #define LAND_AUDIO_EVENT_COUNT 14
 #define LAND_AUDIO_SOURCE_CUE_COUNT 49
+#define LAND_AUDIO_PLANT_CUE_COUNT 17
 #define LAND_DIALOGUE_TEXT_CAPACITY 192
 #define LAND_HERO_MOTION_VARIANT_COUNT 5
 #define LAND_KILIX_MAX_RIFLE_CHARGE \
     LAND_PARITY_LEGEND_MAX_RIFLE_CHARGE
+/* The conservatory door spans this stretch of the social room's back wall.
+ * Both side edges are taken (training on the right, the wall on the left),
+ * so the third room is entered by walking up through the top edge here. */
+#define LAND_CONSERVATORY_DOOR_LEFT 24.0f
+#define LAND_CONSERVATORY_DOOR_RIGHT 84.0f
 #define LAND_TRAINING_ENEMY_X 382.0f
 #define LAND_TRAINING_ENEMY_Y 191.0f
 #define LAND_ENEMY_INITIAL_COOLDOWN_TICKS 84
@@ -39,7 +45,11 @@ typedef enum land_mode {
 
 typedef enum land_location {
     LAND_LOCATION_SOCIAL = 0,
-    LAND_LOCATION_TRAINING = 1
+    LAND_LOCATION_TRAINING = 1,
+    /* Full-canvas pleb-plant-grower, entered through the top-left door of
+     * the social room. Land only tracks that the player is in there; the
+     * plant itself lives in land_conservatory (conservatory.h). */
+    LAND_LOCATION_CONSERVATORY = 2
 } land_location;
 
 typedef enum land_cast {
@@ -265,6 +275,8 @@ typedef struct land_graphics {
 
 typedef struct land_audio {
     kilix_game_audio runtime;
+    pcmmix_bank plant_bank;     /* the conservatory's cues; see audio.c */
+    size_t loaded_plant_cues;
 } land_audio;
 
 void land_game_init(land_state *game);
@@ -318,12 +330,29 @@ bool land_graphics_hero_motion_cell(
 bool land_render(ki_td_soft_renderer *renderer, const land_state *game,
                  const land_graphics *graphics);
 
+/* What Land's strip says over the conservatory. The plant draws its own
+ * screens but not its keys: the bindings are the host's, so Land names them. */
+typedef enum land_conservatory_hint {
+    LAND_CONSERVATORY_HINT_PLANT = 0,  /* the plant itself */
+    LAND_CONSERVATORY_HINT_PANEL,      /* calendar, journal or away report */
+    LAND_CONSERVATORY_HINT_CHOOSER,
+    LAND_CONSERVATORY_HINT_NOTICE,     /* a damaged record or a replant */
+    LAND_CONSERVATORY_HINT_KEYS        /* the full key list is open */
+} land_conservatory_hint;
+
+/* Draws over whatever the renderer holds; the caller packs the frame. */
+bool land_render_conservatory_chrome(ki_td_soft_renderer *renderer,
+                                     land_conservatory_hint hint);
+
 bool land_audio_init(land_audio *audio, const char *asset_root, bool live);
 void land_audio_play(land_audio *audio, land_cast cast,
                      land_audio_event event);
+void land_audio_play_plant(land_audio *audio, uint8_t kind, float gain,
+                           float pitch);
 void land_audio_update(land_audio *audio, float seconds);
 void land_audio_shutdown(land_audio *audio);
 bool land_audio_assets_selftest(const char *asset_root,
-                                size_t *loaded_cues);
+                                size_t *loaded_cues,
+                                size_t *loaded_plant_cues);
 
 #endif

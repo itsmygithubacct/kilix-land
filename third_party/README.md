@@ -13,3 +13,10 @@ against four of its components through the symlinks in this directory:
 
 The SDK retains each component's license and its pinned external
 dependencies below `kilix-game-sdk/kilix-game-kit/third_party/`.
+
+`pleb-plant-grower` is a second recursive submodule: the houseplant game
+behind Land's conservatory. Land links only its archive,
+`libpleb-plant-grower.a`, through `pleb-plant-grower/mk/pleb-plant-grower.mk`,
+and compiles it against Land's own `kilix-game-sdk` checkout, never the copy
+nested inside it. `make sdk-check` confirms the two pins are the same
+commit.

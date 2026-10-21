@@ -1293,6 +1293,18 @@ static void draw_exit_prompt(ki_td_soft_renderer *renderer,
                         472.0f + bob, 219.0f, 2.0f, COLOR_GOLD, 1.0f);
         ki_td_soft_line(renderer, view, 472.0f + bob, 219.0f,
                         467.0f + bob, 225.0f, 2.0f, COLOR_GOLD, 1.0f);
+        /* The conservatory has no door in the room art, so the way up is
+         * marked over the stretch of wall that leads to it. */
+        ki_td_soft_fill_rect(renderer, view, LAND_CONSERVATORY_DOOR_LEFT - 16.0f,
+                             112.0f, 122.0f, 22.0f, UINT32_C(0x070b14), 0.78f);
+        text_at(canvas, view, LAND_CONSERVATORY_DOOR_LEFT + 6.0f, 114.0f,
+                "CONSERVATORY", COLOR_INK);
+        ki_td_soft_line(renderer, view, LAND_CONSERVATORY_DOOR_LEFT - 10.0f,
+                        127.0f - bob, LAND_CONSERVATORY_DOOR_LEFT - 5.0f,
+                        120.0f - bob, 2.0f, COLOR_GOLD, 1.0f);
+        ki_td_soft_line(renderer, view, LAND_CONSERVATORY_DOOR_LEFT - 5.0f,
+                        120.0f - bob, LAND_CONSERVATORY_DOOR_LEFT,
+                        127.0f - bob, 2.0f, COLOR_GOLD, 1.0f);
     }
 }
 
@@ -1604,21 +1616,90 @@ static void draw_cast_select(ki_td_soft_renderer *renderer,
             COLOR_MUTED);
 }
 
-bool land_render(ki_td_soft_renderer *renderer, const land_state *game,
-                 const land_graphics *graphics)
+static bool fit_view(ki_td_soft_renderer *renderer, ki_td_view *view)
 {
     ki_td_fit_spec spec;
-    ki_td_view view;
-    sr_canvas *canvas;
-    if (!renderer || !game || !graphics ||
-        !ki_td_fit_spec_init(&spec, LAND_LOGICAL_WIDTH, LAND_LOGICAL_HEIGHT,
+    if (!ki_td_fit_spec_init(&spec, LAND_LOGICAL_WIDTH, LAND_LOGICAL_HEIGHT,
                              ki_td_soft_width(renderer),
                              ki_td_soft_height(renderer)))
         return false;
     spec.scale_policy = KI_TD_SCALE_PIXEL_ART;
     spec.integer_scale_threshold = 2.0f;
     spec.minimum_scale = 0.5f;
-    if (!ki_td_view_fit(&view, &spec)) return false;
+    return ki_td_view_fit(view, &spec);
+}
+
+/* The conservatory keys, in the order the plant game's own frontend binds
+ * them: care on the left, looking on the right. */
+static void draw_conservatory_keys(ki_td_soft_renderer *renderer,
+                                   const ki_td_view *view, sr_canvas *canvas)
+{
+    static const char *const CARE[] = {
+        "C  CHECK THE SOIL", "L  LIFT THE POT", "W  WATER", "F  FEED",
+        "M  MIST", "R  ROTATE", "P  WIPE THE LEAVES", "T  TRIM",
+        "O  REPOT", "D  EMPTY THE SAUCER", "S  SLEEVE IN / OUT"
+    };
+    static const char *const LOOK[] = {
+        "K  CALENDAR", "J  JOURNAL", "B  PLANT LABEL", "H  THESE KEYS",
+        "ARROWS  MOVE", "ENTER  CHOOSE", "ESC  CLOSE / LEAVE", "Q  QUIT"
+    };
+    size_t index;
+    ki_td_soft_fill_rect(renderer, view, 16.0f, 18.0f, 448.0f, 216.0f,
+                         UINT32_C(0x070b14), 0.90f);
+    ki_td_soft_fill_rect(renderer, view, 16.0f, 18.0f, 3.0f, 216.0f,
+                         COLOR_GOLD, 1.0f);
+    text_at(canvas, view, 28.0f, 22.0f, "CONSERVATORY KEYS", COLOR_GOLD);
+    for (index = 0u; index < sizeof CARE / sizeof CARE[0]; ++index)
+        text_at(canvas, view, 28.0f, 44.0f + 16.0f * (float)index,
+                CARE[index], COLOR_INK);
+    for (index = 0u; index < sizeof LOOK / sizeof LOOK[0]; ++index)
+        text_at(canvas, view, 252.0f, 44.0f + 16.0f * (float)index,
+                LOOK[index], COLOR_INK);
+}
+
+bool land_render_conservatory_chrome(ki_td_soft_renderer *renderer,
+                                     land_conservatory_hint hint)
+{
+    ki_td_view view;
+    sr_canvas *canvas;
+    const char *strip;
+    if (!renderer || !fit_view(renderer, &view)) return false;
+    canvas = ki_td_soft_canvas(renderer);
+    switch (hint) {
+    case LAND_CONSERVATORY_HINT_PANEL:
+        strip = "ARROWS MOVE  K CALENDAR  J JOURNAL  ESC CLOSE";
+        break;
+    case LAND_CONSERVATORY_HINT_CHOOSER:
+        strip = "ARROWS MOVE  ENTER CHOOSE  ESC BACK";
+        break;
+    case LAND_CONSERVATORY_HINT_NOTICE:
+        strip = "ENTER CONTINUE  ESC LEAVE";
+        break;
+    case LAND_CONSERVATORY_HINT_KEYS:
+        draw_conservatory_keys(renderer, &view, canvas);
+        strip = "H OR ESC  CLOSE THESE KEYS";
+        break;
+    case LAND_CONSERVATORY_HINT_PLANT:
+    default:
+        strip = "W WATER  M MIST  F FEED  C SOIL  H KEYS  ESC LEAVE";
+        break;
+    }
+    ki_td_soft_fill_rect(renderer, &view, 8.0f, 242.0f,
+                         23.0f + 8.0f * (float)strlen(strip), 21.0f,
+                         UINT32_C(0x070b14), 0.84f);
+    ki_td_soft_fill_rect(renderer, &view, 8.0f, 242.0f, 3.0f, 21.0f,
+                         COLOR_GOLD, 1.0f);
+    text_at(canvas, &view, 17.0f, 244.0f, strip, COLOR_MUTED);
+    return true;
+}
+
+bool land_render(ki_td_soft_renderer *renderer, const land_state *game,
+                 const land_graphics *graphics)
+{
+    ki_td_view view;
+    sr_canvas *canvas;
+    if (!renderer || !game || !graphics || !fit_view(renderer, &view))
+        return false;
 
     ki_td_soft_clear(renderer, UINT32_C(0x05070d));
     draw_room(renderer, &view, game, graphics);
