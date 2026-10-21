@@ -1,14 +1,15 @@
 # Shared Kilix libraries
 
-This directory contains recursive Git checkouts of the shared Kilix C
-libraries used by the game:
+`kilix-game-sdk` is a recursive Git submodule holding every shared Kilix game
+library at one pinned revision; `git submodule status` shows it. Land builds
+against four of its components through the symlinks in this directory:
 
-| Library | Revision | Purpose |
-| --- | --- | --- |
-| `kilix-game-kit` | `1bcd352a73c0` | fixed-step clock and terminal runtime |
-| `kilix-top-down-engine` | `37b3ade5ac6d` | fitted software rendering |
-| `kilix-assets` | `db347356644a` | bounded PNG cache, atlas cells, and clips |
-| `kilix-ui` | `b7289c238aad` | dialogue panel, text, and portrait rendering |
+| Library | Purpose |
+| --- | --- |
+| `kilix-game-kit` | fixed-step clock and terminal runtime |
+| `kilix-top-down-engine` | fitted software rendering |
+| `kilix-assets` | bounded PNG cache, atlas cells, and clips |
+| `kilix-ui` | dialogue panel, text, and portrait rendering |
 
-Each checkout retains its `.git` metadata, recursive submodules, upstream
-license, and pinned dependency revisions.
+The SDK retains each component's license and its pinned external
+dependencies below `kilix-game-sdk/kilix-game-kit/third_party/`.

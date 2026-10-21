@@ -188,15 +188,21 @@ The test suite checks:
 - 128 simulation-driven walking frames covering all four directions for every
   cast under `build/walk-preview/`.
 
-## Shared-library checkouts
+## Shared libraries
 
-| Checkout | Revision |
+The shared libraries come from one recursive submodule,
+`third_party/kilix-game-sdk`; `git submodule status` shows its pinned
+revision. The four libraries Land builds against are reached through
+symlinks beside it:
+
+| Path | Target |
 | --- | --- |
-| `third_party/kilix-game-kit` | `91594b2d8f49` |
-| `third_party/kilix-top-down-engine` | `3340f91eb356` |
-| `third_party/kilix-assets` | `db347356644a` |
-| `third_party/kilix-ui` | `9bb17ff683c6` |
+| `third_party/kilix-game-kit` | `kilix-game-sdk/kilix-game-kit` |
+| `third_party/kilix-top-down-engine` | `kilix-game-sdk/kilix-top-down-engine` |
+| `third_party/kilix-assets` | `kilix-game-sdk/kilix-assets` |
+| `third_party/kilix-ui` | `kilix-game-sdk/kilix-ui` |
 
-These are recursive Git checkouts, not flattened source copies. The top-level
-Makefile builds and links them directly. Graphics provenance is recorded in
-[`assets/graphics/README.md`](assets/graphics/README.md).
+Clone with `--recurse-submodules`, or run
+`git submodule update --init --recursive` in an existing checkout. The
+top-level Makefile builds and links these libraries directly. Graphics
+provenance is recorded in [`assets/graphics/README.md`](assets/graphics/README.md).
