@@ -718,6 +718,38 @@ static void return_to_social_room(land_state *game)
     set_toast(game, "Back with the crew. The training room is through the right exit.");
 }
 
+static void enter_conservatory(land_state *game)
+{
+    game->location = LAND_LOCATION_CONSERVATORY;
+    game->player_y = LAND_FLOOR_TOP;
+    game->facing = LAND_FACING_UP;
+    game->attack_facing = LAND_FACING_UP;
+    game->player_moving = false;
+    game->aiming = false;
+    game->nearest_actor = -1;
+    game->toast_ticks = 0;
+    clear_attack(game);
+}
+
+static void leave_conservatory(land_state *game)
+{
+    game->location = LAND_LOCATION_SOCIAL;
+    game->player_x = (LAND_CONSERVATORY_DOOR_LEFT +
+                      LAND_CONSERVATORY_DOOR_RIGHT) * 0.5f;
+    game->player_y = LAND_FLOOR_TOP + 12.0f;
+    game->facing = LAND_FACING_DOWN;
+    game->attack_facing = LAND_FACING_DOWN;
+    game->player_moving = false;
+    game->nearest_actor = land_nearest_actor(game);
+    set_toast(game, "Back with the crew. The plant keeps growing.");
+}
+
+static bool at_conservatory_door(const land_state *game)
+{
+    return game->player_x >= LAND_CONSERVATORY_DOOR_LEFT &&
+           game->player_x <= LAND_CONSERVATORY_DOOR_RIGHT;
+}
+
 static const conversation *active_conversation(const land_state *game)
 {
     int index;
@@ -908,7 +940,8 @@ void land_game_init(land_state *game)
 
 void land_game_open_cast_select(land_state *game)
 {
-    if (!game || game->mode != LAND_MODE_ROOM || !game->cast_confirmed)
+    if (!game || game->mode != LAND_MODE_ROOM || !game->cast_confirmed ||
+        game->location == LAND_LOCATION_CONSERVATORY)
         return;
     game->cast_cursor = game->cast;
     game->mode = LAND_MODE_CAST_SELECT;
@@ -1690,6 +1723,13 @@ void land_game_update(land_state *game, int move_x, int move_y, float seconds)
     if (!game || !isfinite(seconds) || seconds <= 0.0f || seconds > 0.25f)
         return;
     game->player_moving = false;
+    if (game->location == LAND_LOCATION_CONSERVATORY) {
+        /* The plant owns the canvas and the keys in here; Land keeps only
+         * its clock running so presentation and toasts stay in step. */
+        game->simulation_tick += 1u;
+        if (game->toast_ticks > 0) game->toast_ticks--;
+        return;
+    }
     if (game->mode == LAND_MODE_ROOM) {
         if (game->player_recovery_ticks > 0) {
             game->aiming = false;
@@ -1748,6 +1788,10 @@ void land_game_update(land_state *game, int move_x, int move_y, float seconds)
             if (game->player_x >= LAND_SOCIAL_EXIT_RIGHT &&
                 move_x > 0) {
                 enter_training(game);
+            } else if (game->player_y <= LAND_FLOOR_TOP && move_y < 0 &&
+                       game->player_recovery_ticks == 0 &&
+                       at_conservatory_door(game)) {
+                enter_conservatory(game);
             } else {
                 if (game->player_x < LAND_SOCIAL_LEFT)
                     game->player_x = LAND_SOCIAL_LEFT;
@@ -1825,6 +1869,7 @@ bool land_game_interact(land_state *game)
     if (!game) return false;
     if (game->mode == LAND_MODE_CAST_SELECT)
         return land_game_confirm_cast(game);
+    if (game->location == LAND_LOCATION_CONSERVATORY) return false;
     if (game->mode == LAND_MODE_ROOM) {
         int actor = land_nearest_actor(game);
         if (game->location == LAND_LOCATION_TRAINING) {
@@ -1895,6 +1940,10 @@ void land_game_cancel(land_state *game)
         return_to_social_room(game);
         return;
     }
+    if (game->location == LAND_LOCATION_CONSERVATORY) {
+        leave_conservatory(game);
+        return;
+    }
     if (game->mode != LAND_MODE_DIALOGUE) return;
     game->mode = LAND_MODE_ROOM;
     game->conversation_actor = -1;
@@ -1932,8 +1981,13 @@ bool land_game_validate(const land_state *game, char *error, size_t error_size)
     const char *message = NULL;
     if (!game) message = "state is null";
     else if (game->location < LAND_LOCATION_SOCIAL ||
-             game->location > LAND_LOCATION_TRAINING)
+             game->location > LAND_LOCATION_CONSERVATORY)
         message = "location is invalid";
+    else if (game->location == LAND_LOCATION_CONSERVATORY &&
+             (game->mode != LAND_MODE_ROOM ||
+              !at_conservatory_door(game) ||
+              game->player_y != LAND_FLOOR_TOP))
+        message = "conservatory visit is invalid";
     else if ((game->location == LAND_LOCATION_SOCIAL &&
               (game->player_x < LAND_SOCIAL_LEFT ||
                game->player_x > LAND_SOCIAL_EXIT_RIGHT)) ||
@@ -2043,7 +2097,7 @@ bool land_game_validate(const land_state *game, char *error, size_t error_size)
                !isfinite(game->enemy_attack_target_y))) ||
              game->enemy_attack_damage < 0)
         message = "enemy attack state is invalid";
-    else if (game->location == LAND_LOCATION_SOCIAL &&
+    else if (game->location != LAND_LOCATION_TRAINING &&
              (game->enemy_kind != -1 ||
               game->enemy_action != LAND_ENEMY_ACTION_IDLE))
         message = "social room has a training target";
