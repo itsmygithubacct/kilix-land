@@ -481,6 +481,10 @@ static void set_player_profile(land_state *game, bool refill)
     game->player_defense = defense;
     if (refill || game->player_hp <= 0 || game->player_hp > maximum_hp)
         game->player_hp = maximum_hp;
+    if (refill) {
+        game->player_hit_ticks = 0;
+        game->player_recovery_ticks = 0;
+    }
 }
 
 static void reset_player_resources(land_state *game)

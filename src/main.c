@@ -651,6 +651,53 @@ static int selftest(void)
                               "FAIL knockout did not hold cast=%d\n", cast);
                 return EXIT_FAILURE;
             }
+            /* Leaving a knockout must cancel its delayed training reset. */
+            for (int transition = 0; transition < 3; ++transition) {
+                land_state escaped = training;
+                land_state returned;
+                float room_x;
+                float room_y;
+                if (transition == 0) {
+                    land_game_cancel(&escaped);
+                } else {
+                    land_game_open_cast_select(&escaped);
+                    if (transition == 2)
+                        land_game_move_cast_cursor(&escaped, 1);
+                    if (!land_game_confirm_cast(&escaped)) {
+                        (void)fprintf(stderr,
+                            "FAIL knockout cast confirmation cast=%d\n", cast);
+                        return EXIT_FAILURE;
+                    }
+                }
+                returned = escaped;
+                room_x = escaped.player_x;
+                room_y = escaped.player_y;
+                for (int tick = 0; tick <= LAND_PLAYER_RECOVERY_TICKS; ++tick)
+                    land_game_update(&escaped, 0, 0, LAND_TICK_SECONDS);
+                if (escaped.location != LAND_LOCATION_SOCIAL ||
+                    escaped.player_x != room_x || escaped.player_y != room_y ||
+                    escaped.player_hp != escaped.player_max_hp ||
+                    escaped.player_hit_ticks != 0 ||
+                    escaped.player_recovery_ticks != 0 ||
+                    !land_game_validate(&escaped, error, sizeof error)) {
+                    (void)fprintf(stderr,
+                        "FAIL knockout room return cast=%d transition=%d\n",
+                        cast, transition);
+                    return EXIT_FAILURE;
+                }
+                /* Also re-enter immediately, before the old timer expires. */
+                escaped = returned;
+                escaped.player_x = 459.0f;
+                land_game_update(&escaped, 1, 0, LAND_TICK_SECONDS);
+                if (escaped.location != LAND_LOCATION_TRAINING ||
+                    escaped.player_recovery_ticks != 0 ||
+                    !land_game_attack(&escaped)) {
+                    (void)fprintf(stderr,
+                        "FAIL knockout range re-entry cast=%d transition=%d\n",
+                        cast, transition);
+                    return EXIT_FAILURE;
+                }
+            }
             while (training.player_recovery_ticks > 0 &&
                    recovery_guard++ <= LAND_PLAYER_RECOVERY_TICKS)
                 land_game_update(
