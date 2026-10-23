@@ -23,6 +23,9 @@ static int text_scale(const ki_td_view *view)
     return view->scale >= 1.85f ? 2 : 1;
 }
 
+/* A glyph is at most 8 logical pixels wide, and exactly 8 at 1x and 2x.
+ * Panel widths and string lengths below are sized to that; several had been
+ * laid out for 6 and ran past their panels. */
 static void text_at(sr_canvas *canvas, const ki_td_view *view,
                     float x, float y, const char *text, uint32_t color)
 {
@@ -1076,7 +1079,7 @@ static void draw_header(ki_td_soft_renderer *renderer, const ki_td_view *view,
     const char *controls = "WASD  ENTER TALK  C CAST  Q EXIT";
     (void)snprintf(title, sizeof title, "%s / %s",
                    game->location == LAND_LOCATION_TRAINING ?
-                   "TRAINING RANGE" :
+                   "TRAINING" :
                    land_cast_room_name(land_visible_cast(game)),
                    land_actor_name(game, LAND_ACTOR_HERO));
     ki_td_soft_fill_rect(renderer, view, 8.0f, 7.0f, 178.0f, 21.0f,
@@ -1090,10 +1093,10 @@ static void draw_header(ki_td_soft_renderer *renderer, const ki_td_view *view,
     if (game->location == LAND_LOCATION_TRAINING) {
         if (game->cast == LAND_CAST_CHUMRUNNER)
             controls = game->aiming ?
-                       "WASD RETICLE  Z FIRE  X LOWER  R LOAD  ESC" :
-                       "WASD  Z BUTT  X AIM  R LOAD  ESC  C CAST";
+                       "WASD AIM  Z FIRE  X LOWER  R LOAD" :
+                       "WASD  Z BUTT  X AIM  R LOAD  ESC";
         else if (game->cast == LAND_CAST_LEGEND)
-            controls = "WASD  X AIM  Z USE  ESC BACK  C CAST";
+            controls = "WASD  X AIM  Z USE  ESC  C CAST";
         else
             controls = "WASD  Z SWING  ESC BACK  C CAST";
     }
@@ -1103,7 +1106,7 @@ static void draw_header(ki_td_soft_renderer *renderer, const ki_td_view *view,
 static const char *ready_attack_name(const land_state *game)
 {
     if (game->player_recovery_ticks > 0)
-        return "KNOCKED OUT  /  RECOVERING";
+        return "KNOCKED OUT / RECOVERING";
     if (game->rook_reload_ticks > 0)
         return "RELOADING ARES PREDATOR";
     if (game->attack != LAND_ATTACK_NONE)
@@ -1111,21 +1114,21 @@ static const char *ready_attack_name(const land_state *game)
     if (game->aiming) {
         if (game->cast == LAND_CAST_CHUMRUNNER &&
             game->rook_magazine <= 0)
-            return "PREDATOR EMPTY  /  R RELOAD";
+            return "PREDATOR EMPTY  R RELOAD";
         if (game->cast == LAND_CAST_CHUMRUNNER &&
             land_rook_hit_chance(game) == 0)
-            return "OUT OF RANGE  /  MOVE CLOSER";
+            return "TOO FAR / MOVE CLOSER";
         return land_game_target_locked(game) ?
                "TARGET LOCKED  /  Z FIRE" :
-               "AIM MODE  /  MOVE RETICLE";
+               "AIM MODE / MOVE RETICLE";
     }
     if (game->cast == LAND_CAST_LEGEND)
         return game->kilix_rifle_charge > 0 ?
                "Z BUTT  /  X AIM MODE" : "Z RIFLE BUTT";
     if (game->cast == LAND_CAST_CHUMRUNNER)
         return game->rook_magazine > 0 ?
-               "Z PISTOL BUTT  /  X AIM MODE" :
-               "Z PISTOL BUTT  /  R RELOAD";
+               "Z PISTOL BUTT / X AIM" :
+               "Z PISTOL BUTT / R RELOAD";
     if (game->cast == LAND_CAST_FANTASY)
         return "BRONZE BLADE";
     return "BENT BAT BASH";
@@ -1168,7 +1171,7 @@ static void draw_training_hud(ki_td_soft_renderer *renderer,
                        game->kilix_rifle_charge,
                        LAND_KILIX_MAX_RIFLE_CHARGE);
     } else if (game->cast == LAND_CAST_CHUMRUNNER) {
-        (void)snprintf(line, sizeof line, "HP %d/%d  MAG %d  RES %d",
+        (void)snprintf(line, sizeof line, "HP %d/%d MAG%d RES%d",
                        game->player_hp, game->player_max_hp,
                        game->rook_magazine, game->rook_reserve_ammo);
     } else if (game->cast == LAND_CAST_PLEB_BOUND) {
@@ -1195,11 +1198,11 @@ static void draw_training_hud(ki_td_soft_renderer *renderer,
     ki_td_soft_fill_rect(renderer, view, 469.0f, 38.0f, 3.0f, 43.0f,
                          COLOR_GOLD, 1.0f);
     text_at(canvas, view, 227.0f, 42.0f, land_enemy_name(game), COLOR_INK);
-    ki_td_soft_fill_rect(renderer, view, 227.0f, 62.0f, 173.0f, 8.0f,
+    ki_td_soft_fill_rect(renderer, view, 227.0f, 62.0f, 150.0f, 8.0f,
                          UINT32_C(0x20283a), 1.0f);
     if (health_fraction > 0.0f)
         ki_td_soft_fill_rect(renderer, view, 227.0f, 62.0f,
-                             173.0f * health_fraction, 8.0f,
+                             150.0f * health_fraction, 8.0f,
                              game->enemy_hp * 3 < game->enemy_max_hp ?
                              UINT32_C(0xff786b) :
                              land_actor_color(game, LAND_ACTOR_HERO),
@@ -1208,10 +1211,13 @@ static void draw_training_hud(ki_td_soft_renderer *renderer,
         (void)snprintf(line, sizeof line, "TAG %d",
                        game->enemy_hp);
     else
-        (void)snprintf(line, sizeof line, "HP %d  D%d",
+        (void)snprintf(line, sizeof line, "HP %d D%d",
                        game->enemy_hp,
                        game->enemy_defense);
-    text_at(canvas, view, 405.0f, 59.0f, line, COLOR_MUTED);
+    /* Right-aligned against the edge bar, so a longer reading grows into
+     * the space the meter leaves rather than past the panel. */
+    text_at(canvas, view, 466.0f - 8.0f * (float)strlen(line), 59.0f, line,
+            COLOR_MUTED);
 
     if (game->enemy_action != LAND_ENEMY_ACTION_IDLE) {
         const char *warning;
@@ -1223,7 +1229,7 @@ static void draw_training_hud(ki_td_soft_renderer *renderer,
         else
             warning = game->enemy_attack_landed ?
                       "RECOVERING" : "!! ATTACK !!";
-        width = 24.0f + (float)strlen(warning) * 6.0f;
+        width = 24.0f + (float)strlen(warning) * 8.0f;
         ki_td_soft_fill_rect(renderer, view, 472.0f - width, 85.0f,
                              width, 18.0f, UINT32_C(0x070b14), 0.86f);
         ki_td_soft_fill_rect(renderer, view, 469.0f, 85.0f,
@@ -1280,9 +1286,13 @@ static void draw_exit_prompt(ki_td_soft_renderer *renderer,
     } else if (game->mode == LAND_MODE_ROOM) {
         ki_td_soft_fill_rect(renderer, view, 397.0f, 205.0f, 83.0f, 28.0f,
                              UINT32_C(0x070b14), 0.78f);
-        text_at(canvas, view, 406.0f, 208.0f, "TRAINING >", COLOR_INK);
-        ki_td_soft_line(renderer, view, 466.0f + bob, 224.0f,
-                        474.0f + bob, 218.0f, 2.0f, COLOR_GOLD, 1.0f);
+        /* Eight glyphs and a drawn chevron: "TRAINING >" as text ran eight
+         * logical pixels past the right edge. */
+        text_at(canvas, view, 403.0f, 208.0f, "TRAINING", COLOR_INK);
+        ki_td_soft_line(renderer, view, 467.0f + bob, 213.0f,
+                        472.0f + bob, 219.0f, 2.0f, COLOR_GOLD, 1.0f);
+        ki_td_soft_line(renderer, view, 472.0f + bob, 219.0f,
+                        467.0f + bob, 225.0f, 2.0f, COLOR_GOLD, 1.0f);
     }
 }
 
@@ -1301,9 +1311,9 @@ static void draw_talk_prompt(ki_td_soft_renderer *renderer,
     bob = (game->simulation_tick / 12u) % 2u == 0u ? 0.0f : -2.0f;
     (void)snprintf(message, sizeof message, "ENTER  TALK - %s",
                    land_actor_name(game, actor));
-    prompt_width = 22.0f + (float)strlen(message) * 6.0f;
+    prompt_width = 22.0f + (float)strlen(message) * 8.0f;
     if (prompt_width < 154.0f) prompt_width = 154.0f;
-    if (prompt_width > 220.0f) prompt_width = 220.0f;
+    if (prompt_width > 464.0f) prompt_width = 464.0f;
     if (x - prompt_width * 0.5f < 8.0f)
         x = 8.0f + prompt_width * 0.5f;
     if (x + prompt_width * 0.5f > 472.0f)
@@ -1323,20 +1333,8 @@ static void draw_talk_prompt(ki_td_soft_renderer *renderer,
                     1.0f, land_actor_color(game, actor), 0.85f);
 }
 
-static void draw_toast(ki_td_soft_renderer *renderer, const ki_td_view *view,
-                       sr_canvas *canvas, const land_state *game)
+static void wrap_text(const char *text, size_t width, char lines[3][48])
 {
-    if (game->toast_ticks <= 0 || game->mode != LAND_MODE_ROOM) return;
-    ki_td_soft_fill_rect(renderer, view, 44.0f, 239.0f, 392.0f, 23.0f,
-                         UINT32_C(0x070b14), 0.86f);
-    ki_td_soft_fill_rect(renderer, view, 44.0f, 239.0f, 3.0f, 23.0f,
-                         COLOR_GOLD, 1.0f);
-    text_at(canvas, view, 55.0f, 241.0f, game->toast, COLOR_INK);
-}
-
-static void wrap_text(const char *text, char lines[3][48])
-{
-    const size_t width = 42u;
     size_t line;
     size_t offset = 0u;
     size_t length = strlen(text);
@@ -1353,6 +1351,29 @@ static void wrap_text(const char *text, char lines[3][48])
         offset += take;
         while (offset < length && text[offset] == ' ') offset++;
     }
+}
+
+/* One line when it fits the box, else two: many toasts are longer than the
+ * 47 glyphs a line holds, and they used to run off the edge of the screen.
+ * The taller box grows down rather than up, so it stays clear of the
+ * training prompt above it. */
+static void draw_toast(ki_td_soft_renderer *renderer, const ki_td_view *view,
+                       sr_canvas *canvas, const land_state *game)
+{
+    char lines[3][48];
+    float top;
+    float height;
+    if (game->toast_ticks <= 0 || game->mode != LAND_MODE_ROOM) return;
+    wrap_text(game->toast, 47u, lines);
+    top = lines[1][0] != '\0' ? 234.0f : 239.0f;
+    height = lines[1][0] != '\0' ? 34.0f : 23.0f;
+    ki_td_soft_fill_rect(renderer, view, 44.0f, top, 392.0f, height,
+                         UINT32_C(0x070b14), 0.86f);
+    ki_td_soft_fill_rect(renderer, view, 44.0f, top, 3.0f, height,
+                         COLOR_GOLD, 1.0f);
+    text_at(canvas, view, 55.0f, top + 1.0f, lines[0], COLOR_INK);
+    if (lines[1][0] != '\0')
+        text_at(canvas, view, 55.0f, top + 17.0f, lines[1], COLOR_INK);
 }
 
 static void visible_line(char output[48], const char *line, size_t *remaining)
@@ -1471,7 +1492,7 @@ static void draw_dialogue(ki_td_soft_renderer *renderer,
                    game->dialogue_beat + 1, count);
     text_at(canvas, view, 397.0f, panel_y + 15.0f, counter, COLOR_MUTED);
 
-    wrap_text(text, lines);
+    wrap_text(text, 42u, lines);
     for (line = 0; line < 3; ++line) {
         visible_line(visible[line], lines[line], &remaining);
         visible_lines[line] = visible[line];
