@@ -16,6 +16,15 @@ Each selection also changes the room:
 - **Kilix Fantasy:** Emberlight guild common room
 - **Pleb Bound:** Maple Loop repair-library workroom
 
+**Status:** installable on demand from the Kilix content catalog (catalog id
+`kilix-land`, kind `game`): `kilix games play kilix-land` installs, builds and
+starts it, and the Kilix 95 Games menu offers it from the same catalog. The
+catalog pinned by Kilix for Plebian-OS 0.2.3 (release candidate `v0.2.3-rc6`)
+selects commit `710d73ef` on the `release/0.2.2-coordinated` branch; `main`,
+the default branch documented here, carries rebased equivalents of those
+commits and differs from the pin in two lines (`src/render.c` and the
+`pleb-plant-grower` gitlink).
+
 Walk through the right edge of any room to enter that cast's training range.
 The range uses a real backdrop and enemy atlas from the selected game, rolls a
 random non-boss opponent from that game's roster, and gives the protagonist
@@ -36,6 +45,18 @@ dots, and cast list are rendered with `kilix-ui`. PNG loading, validation,
 caching, and atlas slicing go through `kilix-assets`; the 60 Hz input and
 simulation loop follows the same `kilix-game-kit` and
 `kilix-top-down-engine` integration used by `../legend-of-kilix`.
+
+## What it does
+
+- Puts a protagonist and three allies from one of four Kilix game casts in a
+  cast-specific room, with portrait cards and typewriter dialogue (24 scripted
+  exchanges in all).
+- Opens each cast's training range with a real backdrop, a random non-boss
+  enemy from that game, and the protagonist's source-game standard attack.
+- Hosts a living pleb-plant-grower houseplant in a conservatory that keeps
+  growing on the wall clock and saves separately from the standalone game.
+- Plays the source games' own sound cues through one mixer, and runs entirely
+  offline.
 
 ## Build and run
 
@@ -81,196 +102,83 @@ A strip along the bottom names the ones in use, and H opens the full list:
 Set `KILIX_LAND_ASSETS` to the project root if launching the executable from a
 different working directory.
 
-## Cast behavior
+## Usage
 
-![Every selectable cast and its matching dialogue art](docs/casts.png)
-
-Each cast has its own research-grounded background, room title, names, colors,
-portraits, and six conversation paths (a first and repeat exchange for each of
-three allies), for 24 scripted exchanges across the four casts. Switching
-casts changes the complete scene and resets conversation history so the new
-crew starts fresh.
-
-Kilix uses Legend of Kilix's byte-identical 16×8 player atlas, exact direction
-rows, and native 64×64 draw size. Because its authored walk cells all hold one
-stride, runtime movement now alternates a planted contact pose, that authored
-step, another contact, and a lower-body-only opposite step.
-
-The other three heroes use their games' exact 8×4 character sheets. Arden's and
-Pip's down cycles keep every upper-body pixel fixed and alternately lift their
-straight idle legs, preventing torso drift, angled walking, and sideways turns.
-The authored side idle/walk poses remain oriented per source sheet (Rook faces
-left; Arden and Pip face right), with runtime mirrors for the opposite
-direction. Pip's upward steps mirror only the lower-body region, so equipment
-and torsos stay fixed. Every pose is aligned by its upper-body spine and lowest
-opaque foot pixel; held keys feed the fixed 60 Hz simulation directly.
-
-## The conservatory
-
-![The way up from the social room, and the plant inside](docs/conservatory.png)
-
-The conservatory embeds pleb-plant-grower as a library, following that game's
-[`docs/EMBEDDING.md`](https://github.com/itsmygithubacct/pleb-plant-grower/blob/main/docs/EMBEDDING.md).
-It is the `third_party/pleb-plant-grower` submodule, linked as
-`libpleb-plant-grower.a`. Land keeps the terminal, the 60 Hz loop and the
-mixer. The plant gets the canvas and the keys while the player is inside.
-Everything that knows the plant's internals is in `src/conservatory.c`, and
-`src/game.c` only ever sees `LAND_LOCATION_CONSERVATORY`.
-
-- **Time.** Land hands the plant a fresh wall clock, boot clock, boot id and
-  local UTC offset on every step. Biology advances once per wall second; on
-  each entry the plant reconciles the time spent away and opens on a "while
-  you were away" report when anything happened.
-- **Saving.** The plant saves when you leave and when Land exits, under
-  `$XDG_DATA_HOME/kilix-land/pleb-plant-grower/` (normally
-  `~/.local/share/kilix-land/pleb-plant-grower/`). It never reads the
-  standalone game's save, and Land ignores the standalone's
-  `PLEB_PLANT_CONFIG_HOME` override. Without a usable home directory the
-  plant still plays, but it does not persist.
-- **Sound.** The plant's 17 cues play through Land's mixer from a bank of
-  their own, since the four casts already fill 56 of the mixer's 64 cue slots.
-  Plant UI cues use the UI bus; care sounds use the effects bus.
-- **Assets.** The plant's sound bank and three procedural atlases are build
-  products it keeps out of git. `make` runs the plant's own generators inside
-  the submodule, which regenerate them byte for byte, and the submodule's
-  `.gitignore` keeps them out of its status.
-- **One SDK.** Host and archive share struct layouts, so both must be built
-  from one `kilix-game-sdk` commit. Land exports its SDK checkout to the
-  archive's sub-make, and `make sdk-check` (part of `make test`) fails if that
-  commit differs from the one pleb-plant-grower itself pins. Land refuses to
-  start if `pg_state_size()` disagrees with its own `sizeof(pg_state)`.
-
-## Source-game combat parity
-
-Training attacks are defined by the original games rather than a generic
-Kilix Land combat formula:
-
-- Kilix swings the rifle butt with Z at any distance. Holding X enters the
-  source aiming stance; Z then fires the beam emitter and spends one of eight
-  charges. Both use the source frame sequence, duration, and 0.18-second
-  cooldown.
-- Rook swings the Ares Predator's pistol butt with Z while not aiming,
-  using his source Close Combat score and adjacent-cell rule. Holding X
-  raises the pistol and Z fires it. Its source range/optimal-range hit chance, 12-round
-  magazine, 20-round reserve, 15–18 raw damage, enemy armor, and minimum-one
-  rule are all retained.
-- Arden can always complete a full Bronze Blade swing. His current 17
-  physical attack combines with Attack's power 13 and level bonus, then
-  applies enemy defense, the source 95–105% roll, and its 1-in-16 critical.
-  The renderer stitches the authored sword tip and slash trail across its
-  atlas boundary so the entire blade remains visible.
-- Pip can always swing the Bent Bat. In reach, Bash uses the live center,
-  bounce, or double timing pattern from the selected Pleb Bound enemy. Bash
-  retains Pip's current accuracy and critical chance, the grade bonuses,
-  enemy evasion/defense, ±2 variance, and the source 1.5× critical.
-
-Chumrunner, Kilix Fantasy, and Pleb Bound now route their own battle commands
-through named versions of those same standard-attack calculations and retain
-a short native action-pose state. Their enemy turns now retain the same
-source damage/defense rules while exposing attacker, target, impact, and hurt
-presentation. Legend of Kilix extends its rifle-butt/laser state machine with
-dodgeable room-enemy target locks and knockout recovery. This keeps both sides
-of combat testable in the main games as well as in Kilix Land.
-
-### How parity is maintained
-
-Kilix Land does not link the four complete game executables at runtime. Its
-real-time room and training adapter lives in `src/game.c`, while the source
-games remain authoritative for their rosters and combat data.
-`tools/sync_source_parity.py` reads Legend of Kilix's combat constants plus the
-Chumrunner, Kilix Fantasy, and Pleb Bound campaign files, generates
-`src/source_parity.h`, copies all 17 source-owned
-character/portrait/training/enemy assets byte-for-byte, refreshes their
-dimensions and manifest hashes, and imports 49 native UI/combat cues from the
-four games. Audio remains source-owned and byte-identical after the sync.
-
-Every one of those reads goes through each source game's **published main**
-(`origin/main`), never its working tree or whichever branch is checked out,
-and the generated header records the four source commits it was built from.
-A game part-way through an art or balance pass has files on disk, and often
-commits on a work branch, that its own main has not accepted yet; without
-this rule Land silently ships them, which is exactly how Arden's cast once
-arrived here as unfinished 16×24 placeholder art. It also keeps every recorded
-source commit fetchable by anyone with access to that game. Two cues predate
-the same rule: Kilix Fantasy and Pleb Bound had no published `enemy_attack`
-sound when it was introduced, so Land maps each game's attack swing to its
-enemy turn.
-
-A source game may also change the shape of its art, not only its numbers.
-Land therefore declares each atlas's own column/row layout, and the check
-fails whenever a copied sheet no longer divides into it — which is what a
-source-side raster change looks like from here.
-
-After a source game publishes to its main, fetch it and update Land:
-
-```sh
-git -C ../<source-game> fetch origin main
-make parity-sync
-```
-
-The tool never touches the network, so `origin/main` is only as fresh as the
-last fetch. A source game present without that ref fails the check rather
-than skipping it.
-
-`make test` begins with `make parity-check`, so stale generated data, copied
-art, or manifest hashes fail immediately instead of silently drifting. Kilix
-Land uses Legend of Kilix's ordinary source-atlas enemies as rapid one-hit
-range targets. Spatial telegraphs, free 2D reticle movement, rapid respawns,
-and one-player knockout recovery are Land presentation adapters around the
-source calculations.
-
-## Verify
-
-```sh
-make test
-```
-
-The test suite checks:
-
-- that Land and pleb-plant-grower build from one `kilix-game-sdk` commit;
-- menu wrapping, cast confirmation, all four cast profiles, and all 24
-  first/repeat dialogue scripts;
-- the conservatory door for every cast: entering only through the marked
-  stretch of wall, the room standing still inside, and Escape returning the
-  player beneath it;
-- all 21 runtime graphics resources—including four social backgrounds, four
-  source-game training backdrops, four enemy atlases, and the generated
-  in-memory mirror cells;
-- all 49 source-game WAV cues and all 17 plant cues through an offline mixer
-  render;
-- headless menu, room, and dialogue scenes;
-- room and dialogue output for every cast under `build/cast-preview/`;
-- source-enemy and in-progress attack output for every training range under
-  `build/training-preview/`;
-- 128 simulation-driven walking frames covering all four directions for every
-  cast under `build/walk-preview/`;
-- a conservatory session against a fixed clock and a private data root: Escape
-  routing, a care verb and its sound, wall-clock aging, a byte-identical
-  reload, three days away reconciled, a first run creating Land's data
-  directory, and play without one;
-- the door, the plant, its key list and calendar, and the plant at 800x450
-  and 1280x720 under `build/conservatory-preview/`.
-
-`make sanitize` rebuilds with clang's address and undefined-behavior
-sanitizers, with leak detection on, and runs the same suite.
-
-## Shared libraries
-
-The shared libraries come from one recursive submodule,
-`third_party/kilix-game-sdk`; `git submodule status` shows its pinned
-revision. The conservatory's game is a second submodule,
-`third_party/pleb-plant-grower`, pinned to a commit that uses the same SDK
-revision. The four libraries Land builds against are reached through
-symlinks beside it:
-
-| Path | Target |
+| Command | Effect |
 | --- | --- |
-| `third_party/kilix-game-kit` | `kilix-game-sdk/kilix-game-kit` |
-| `third_party/kilix-top-down-engine` | `kilix-game-sdk/kilix-top-down-engine` |
-| `third_party/kilix-assets` | `kilix-game-sdk/kilix-assets` |
-| `third_party/kilix-ui` | `kilix-game-sdk/kilix-ui` |
+| `kilix games play kilix-land` | install from the catalog if needed, then play |
+| `./kilix-land` | run a local build |
+| `./kilix-land --version` | print the version |
+| `make` | build the game and the plant's generated assets |
+| `make test` | parity check, SDK check, then every headless self-test and render |
+| `make sanitize` | rebuild with address and undefined-behavior sanitizers and test |
+| `make parity-check` / `make parity-sync` | verify / regenerate data copied from the source games |
 
-Clone with `--recurse-submodules`, or run
-`git submodule update --init --recursive` in an existing checkout. The
-top-level Makefile builds and links these libraries directly. Graphics
-provenance is recorded in [`assets/graphics/README.md`](assets/graphics/README.md).
+The in-game controls are listed under [Build and run](#build-and-run).
+
+## How it works
+
+```text
+ kilix-land (C11)
+   ├── src/game.c          rooms, dialogue, training range (60 Hz loop)
+   ├── src/conservatory.c  embeds libpleb-plant-grower.a
+   ├── src/source_parity.h generated from the source games' published main
+   └── third_party/kilix-game-sdk
+         kilix-game-kit, kilix-top-down-engine, kilix-assets, kilix-ui
+                 │
+                 ▼
+   Kitty graphics frames + Kitty keyboard input in the terminal
+```
+
+Kilix Land is one C11 executable. The rooms, prompts, portraits and dialogue
+are drawn with `kilix-ui`, images load through `kilix-assets`, and the input
+and simulation loop come from `kilix-game-kit` and `kilix-top-down-engine`,
+all from the `kilix-game-sdk` submodule. It does not link the four source
+games: `tools/sync_source_parity.py` copies their rosters, combat constants,
+art and cues from each game's published `main` into a generated header and
+asset set, and `make test` fails if that copy is stale
+([docs/casts-and-combat.md](docs/casts-and-combat.md)). The conservatory links
+pleb-plant-grower as a library and hands it the canvas, keys and clock while
+the player is inside ([docs/conservatory.md](docs/conservatory.md)).
+
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [docs/casts-and-combat.md](docs/casts-and-combat.md) | cast animation, source-game combat parity and how it is maintained |
+| [docs/conservatory.md](docs/conservatory.md) | the embedded houseplant: time, saving, sound, assets, one SDK |
+| [docs/development.md](docs/development.md) | what `make test` checks, and the shared-library layout |
+| [assets/graphics/README.md](assets/graphics/README.md) | graphics provenance |
+| [assets/LICENSE](assets/LICENSE) | the asset licence |
+
+## Related repositories
+
+- [kilix-game-sdk](https://github.com/itsmygithubacct/kilix-game-sdk#readme):
+  the shared runtime, rendering, UI and asset libraries (`third_party/kilix-game-sdk`).
+- [pleb-plant-grower](https://github.com/itsmygithubacct/pleb-plant-grower#readme):
+  the conservatory's plant (`third_party/pleb-plant-grower`).
+- [kilix-content](https://github.com/itsmygithubacct/kilix-content#readme):
+  the catalog entry that installs it, and
+  [Kilix](https://github.com/itsmygithubacct/kilix#readme), whose
+  `kilix games play` launches it.
+- [kilix-land-desktop](https://github.com/itsmygithubacct/kilix-land-desktop#readme):
+  the Kilix Land desktop provider, a walkable desktop that plays like this game.
+- [kilix-land-agent](https://github.com/itsmygithubacct/kilix-land-agent#readme):
+  a resident agent in a Kilix Land studio room.
+
+## Part of Plebian-OS
+
+Kilix Land is one of the repositories behind
+[Plebian-OS](https://github.com/itsmygithubacct/plebian-os#readme), a Debian
+install whose desktop is [Kilix](https://github.com/itsmygithubacct/kilix#readme)
+running the [Kilix 95](https://github.com/itsmygithubacct/kilix-95#readme)
+desktop through [Pleb](https://github.com/itsmygithubacct/pleb#readme).
+It is installed on demand from the Kilix content catalog. The map of every
+repository and how it ships is on the
+[components page](https://github.com/itsmygithubacct/plebian-os/blob/main/docs/components.md).
+
+## License
+
+The source code is MIT; see [LICENSE](LICENSE). Everything under `assets/`
+(atlases, backdrops, portraits and audio cues) is CC BY-NC-SA 4.0; see
+[assets/LICENSE](assets/LICENSE).
