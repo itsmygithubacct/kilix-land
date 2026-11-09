@@ -60,6 +60,10 @@ simulation loop follows the same `kilix-game-kit` and
 
 ## Build and run
 
+Clone it with its submodules (`git clone --recursive
+https://github.com/itsmygithubacct/kilix-land.git`, or
+`git submodule update --init --recursive` in an existing clone), then:
+
 ```sh
 make
 ./kilix-land
